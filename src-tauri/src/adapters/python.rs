@@ -116,6 +116,7 @@ impl LanguageAdapter for PythonAdapter {
 
         let python = python_program();
         let mut command = Command::new(&python);
+        crate::runner::sanitize_child_env(&mut command);
         command
             .arg("-B")
             .arg("-c")

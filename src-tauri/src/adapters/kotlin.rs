@@ -112,6 +112,7 @@ impl LanguageAdapter for KotlinAdapter {
 
         let kotlinc = kotlin_tool("kotlinc");
         let mut command = Command::new(&kotlinc);
+        crate::runner::sanitize_child_env(&mut command);
         command
             .current_dir(&project.root)
             .arg("-d")

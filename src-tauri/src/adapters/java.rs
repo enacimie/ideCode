@@ -106,6 +106,7 @@ impl LanguageAdapter for JavaAdapter {
 
         let javac = tool("javac");
         let mut command = Command::new(&javac);
+        crate::runner::sanitize_child_env(&mut command);
         command
             .current_dir(&project.root)
             .arg("-d")

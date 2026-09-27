@@ -28,6 +28,20 @@ enum Message {
     Done,
 }
 
+pub const APPIMAGE_ENV_POLLUTION: &[&str] = &["PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH"];
+
+pub fn sanitize_child_env(command: &mut Command) {
+    if std::env::var_os("APPDIR").is_some() {
+        strip_appimage_env(command);
+    }
+}
+
+fn strip_appimage_env(command: &mut Command) {
+    for key in APPIMAGE_ENV_POLLUTION {
+        command.env_remove(key);
+    }
+}
+
 pub fn run_streaming<F>(
     spec: &RunSpec,
     timeout: Option<Duration>,
@@ -43,6 +57,7 @@ where
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    sanitize_child_env(&mut command);
     for (key, value) in &spec.env {
         command.env(key, value);
     }
@@ -143,6 +158,35 @@ fn read_lines<R: Read>(reader: BufReader<R>, stream: Stream, sender: mpsc::Sende
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn strips_appimage_environment_for_children() {
+        let mut command = Command::new("python3");
+        command.env("PYTHONHOME", "/tmp/.mount_ide/usr/");
+        command.env("PYTHONPATH", "/tmp/.mount_ide/usr/share/pyshared/");
+        strip_appimage_env(&mut command);
+        let removed: Vec<String> = command
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .filter_map(|(key, _)| key.to_str().map(str::to_string))
+            .collect();
+        assert!(removed.contains(&"PYTHONHOME".to_string()));
+        assert!(removed.contains(&"PYTHONPATH".to_string()));
+        assert!(removed.contains(&"LD_LIBRARY_PATH".to_string()));
+    }
+
+    #[test]
+    fn adapter_env_wins_over_the_sanitization() {
+        let mut command = Command::new("python3");
+        strip_appimage_env(&mut command);
+        command.env("PYTHONPATH", "/aula/proyecto");
+        let value = command
+            .get_envs()
+            .find(|(key, _)| key.to_str() == Some("PYTHONPATH"))
+            .and_then(|(_, value)| value)
+            .expect("PYTHONPATH del adaptador");
+        assert_eq!(value, "/aula/proyecto");
+    }
 
     fn shell(script: &str) -> RunSpec {
         RunSpec {
