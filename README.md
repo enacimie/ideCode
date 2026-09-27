@@ -1,5 +1,8 @@
 # ideCode
 
+[![verify](https://github.com/enacimie/ideCode/actions/workflows/verify.yml/badge.svg)](https://github.com/enacimie/ideCode/actions/workflows/verify.yml)
+[![release](https://github.com/enacimie/ideCode/actions/workflows/release.yml/badge.svg)](https://github.com/enacimie/ideCode/actions/workflows/release.yml)
+
 Mini IDE modular para aprender a programar, pensado para el aula. Todo el análisis
 y la generación de diagramas ocurren en **Rust**; la interfaz es una capa fina de
 **React** sobre **Tauri 2**.
