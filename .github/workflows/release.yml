@@ -18,8 +18,8 @@ jobs:
             args: --bundles deb,rpm,appimage
           - platform: windows-latest
             args: --bundles msi,nsis
-          - platform: macos-13
-            args: --bundles dmg
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin --bundles dmg
           - platform: macos-latest
             args: --bundles dmg
     runs-on: ${{ matrix.platform }}
@@ -42,6 +42,10 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Target de Rust para macOS Intel
+        if: contains(matrix.args, 'x86_64-apple-darwin')
+        run: rustup target add x86_64-apple-darwin
 
       - uses: swatinem/rust-cache@v2
         with:
