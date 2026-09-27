@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ideCode",
+  "identifier": "com.enacimie.idecode",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ideCode",
+        "width": 1200,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' customprotocol: asset:; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' asset: data:; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; frame-src 'self' blob:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Development",
+    "copyright": "Copyright © Eduardo Nacimiento-García y colaboradores de ideCode",
+    "shortDescription": "Mini IDE modular para aprender a programar",
+    "longDescription": "ideCode es un entorno de desarrollo minimalista y modular pensado para el aula: editor con resaltado de sintaxis, compilación y comprobación de sintaxis, ejecución con argumentos y diagramas de clases generados automáticamente a partir del código, con soporte para Java y Python.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

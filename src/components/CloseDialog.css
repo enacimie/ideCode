@@ -1,0 +1,47 @@
+.close-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.close-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 20px 22px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+}
+
+.close-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.close-dialog p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.close-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+button.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #b91c1c;
+}

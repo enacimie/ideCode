@@ -1,0 +1,15 @@
+.editor-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-host .cm-editor {
+  height: 100%;
+}
+
+.editor-host .cm-scroller {
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 14px;
+}

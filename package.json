@@ -1,0 +1,67 @@
+{
+  "name": "idecode",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mini IDE modular para aprender a programar",
+  "author": "Eduardo Nacimiento-García <enacimie@ull.edu.es>",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enacimie/ideCode.git"
+  },
+  "homepage": "https://github.com/enacimie/ideCode#readme",
+  "bugs": {
+    "url": "https://github.com/enacimie/ideCode/issues"
+  },
+  "packageManager": "pnpm@10.4.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "tauri": "tauri",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm build && pnpm test:run && cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --lib"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.10.4",
+    "@codemirror/lang-java": "^6.0.1",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/legacy-modes": "^6.5.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.8",
+    "@tauri-apps/api": "^2",
+    "codemirror": "^6.0.2",
+    "mermaid": "^11.16.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@tauri-apps/cli": "^2",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "eslint-plugin-react-refresh": "^0.4",
+    "jsdom": "^30.0.1",
+    "prettier": "^3",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8",
+    "vite": "^7.0.4",
+    "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

@@ -1,0 +1,80 @@
+.diagram-panel {
+  width: 42%;
+  min-width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.diagram-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.diagram-hint {
+  flex: 1 1 160px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.diagram-stale {
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.diagram-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.diagram-host {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.diagram-host svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-host g.node.clickable {
+  cursor: pointer;
+}
+
+.diagram-host g.node.clickable:hover .label-container {
+  stroke: var(--accent);
+  stroke-width: 2px;
+}
+
+.diagram-host g.members-group g.label.clickable,
+.diagram-host g.methods-group g.label.clickable {
+  cursor: pointer;
+}
+
+.diagram-host g.members-group g.label.clickable:hover text,
+.diagram-host g.methods-group g.label.clickable:hover text {
+  fill: var(--accent);
+  text-decoration: underline;
+}
+
+.diagram-error {
+  color: var(--error);
+  padding: 12px;
+}

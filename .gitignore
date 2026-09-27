@@ -1,0 +1,29 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+node_modules
+dist
+dist-ssr
+coverage
+*.local
+
+# Rust
+src-tauri/target
+src-tauri/gen
+
+# Scratch
+tmp/
+
+# Editor directories and files
+.vscode/
+.idea
+.DS_Store
+*.suo
+*.sw?
+
+# Python
+__pycache__/
+*.pyc
