@@ -74,6 +74,12 @@ La versión del paquete proviene únicamente de `src-tauri/Cargo.toml`.
 Los binarios de AppImage descargan herramientas de linuxdeploy durante la
 construcción (requiere red).
 
+La CI (`release.yml`) construye los artefactos de Linux dentro de un
+contenedor **Ubuntu 22.04** para que el suelo de glibc sea 2.35: los
+`.deb`, `.rpm` y `.AppImage` funcionan en Ubuntu 22.04+, Debian 12+ y
+Fedora 36+ (si se construyeran en el runner `ubuntu-latest`, exigirían la
+glibc del Ubuntu más nuevo y no arrancarían en distribuciones anteriores).
+
 ## Arquitectura
 
 ```
