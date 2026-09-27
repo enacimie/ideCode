@@ -167,6 +167,9 @@ impl LanguageAdapter for JavaAdapter {
 
         let java = tool("java");
         let mut arguments = vec![
+            "-Dfile.encoding=UTF-8".to_string(),
+            "-Dstdout.encoding=UTF-8".to_string(),
+            "-Dstderr.encoding=UTF-8".to_string(),
             "-cp".to_string(),
             classes_dir.to_string_lossy().into_owned(),
             entry,

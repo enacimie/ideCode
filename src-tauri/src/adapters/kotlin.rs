@@ -187,6 +187,9 @@ impl LanguageAdapter for KotlinAdapter {
                 (
                     java_tool(),
                     vec![
+                        "-Dfile.encoding=UTF-8".to_string(),
+                        "-Dstdout.encoding=UTF-8".to_string(),
+                        "-Dstderr.encoding=UTF-8".to_string(),
                         "-cp".to_string(),
                         classpath.to_string_lossy().into_owned(),
                         entry,
@@ -281,7 +284,9 @@ fn kotlin_stdlib() -> Option<PathBuf> {
         }
     }
     if let Some(kotlinc) = crate::core::tools::find_program(&["kotlinc"], &kotlin_home_dirs()) {
-        let resolved = fs::canonicalize(&kotlinc).unwrap_or(kotlinc);
+        let resolved = fs::canonicalize(&kotlinc)
+            .map(|path| crate::core::project::strip_verbatim(&path))
+            .unwrap_or(kotlinc);
         if let Some(home) = resolved.parent().and_then(Path::parent) {
             roots.push(home.to_path_buf());
         }

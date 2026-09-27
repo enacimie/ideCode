@@ -817,11 +817,17 @@ mod tests {
                 }
             })
             .unwrap();
-        assert_eq!(outcome.exit_code, Some(0));
-        assert!(lines.iter().any(|line| line.contains("Dra. Ruiz")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Argumentos recibidos: hola")));
+        assert_eq!(outcome.exit_code, Some(0), "spec: {spec:?}");
+        assert!(
+            lines.iter().any(|line| line.contains("Dra. Ruiz")),
+            "salida capturada: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Argumentos recibidos: hola")),
+            "salida capturada: {lines:?}"
+        );
 
         let classes = adapter.analyze(&project).unwrap();
         assert!(classes.iter().all(|class| class.line > 0));
@@ -901,11 +907,17 @@ mod tests {
                 }
             })
             .unwrap();
-        assert_eq!(outcome.exit_code, Some(0));
-        assert!(lines.iter().any(|line| line.contains("Dra. Ruiz")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Argumentos recibidos: hola")));
+        assert_eq!(outcome.exit_code, Some(0), "spec: {spec:?}");
+        assert!(
+            lines.iter().any(|line| line.contains("Dra. Ruiz")),
+            "salida capturada: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains("Argumentos recibidos: hola")),
+            "salida capturada: {lines:?}"
+        );
 
         let classes = adapter.analyze(&project).unwrap();
         assert!(classes.iter().all(|class| class.line > 0));
