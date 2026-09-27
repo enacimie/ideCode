@@ -144,6 +144,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[cfg(unix)]
     fn shell(script: &str) -> RunSpec {
         RunSpec {
             program: PathBuf::from("sh"),
