@@ -88,11 +88,7 @@ mod tests {
         fs::write(root.join("python.exe"), "").unwrap();
         fs::write(root.join("javac.bat"), "").unwrap();
 
-        let extensions: Vec<String> = if cfg!(windows) {
-            vec![".EXE".to_string(), ".BAT".to_string(), String::new()]
-        } else {
-            vec![".exe".to_string(), ".bat".to_string(), String::new()]
-        };
+        let extensions: Vec<String> = vec![".exe".to_string(), ".bat".to_string(), String::new()];
 
         let found = find_first(&["python"], std::slice::from_ref(&root), &extensions);
         assert_eq!(found, Some(root.join("python.exe")));

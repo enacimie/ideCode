@@ -28,11 +28,22 @@ pub struct Project {
     pub sources: Vec<SourceFile>,
 }
 
+pub fn strip_verbatim(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 impl Project {
     pub fn load(root: &Path, extensions: &[&str]) -> Result<Self, AdapterError> {
-        let root = root.canonicalize().map_err(|error| {
+        let root = strip_verbatim(&root.canonicalize().map_err(|error| {
             AdapterError::Invalid(format!("No se pudo abrir la carpeta del proyecto: {error}"))
-        })?;
+        })?);
 
         let mut sources = Vec::new();
         for entry in WalkDir::new(&root)
@@ -84,6 +95,22 @@ fn has_extension(path: &Path, extension: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strips_windows_verbatim_prefixes() {
+        assert_eq!(
+            strip_verbatim(Path::new(r"\\?\C:\temp\x")),
+            Path::new(r"C:\temp\x")
+        );
+        assert_eq!(
+            strip_verbatim(Path::new(r"\\?\UNC\server\share\x")),
+            Path::new(r"\\server\share\x")
+        );
+        assert_eq!(
+            strip_verbatim(Path::new("/home/alumno/proyecto")),
+            Path::new("/home/alumno/proyecto")
+        );
+    }
 
     fn write(root: &Path, relative: &str) {
         let path = root.join(relative);
