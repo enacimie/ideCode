@@ -139,12 +139,11 @@ fn read_lines<R: Read>(reader: BufReader<R>, stream: Stream, sender: mpsc::Sende
     let _ = sender.send(Message::Done);
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    #[cfg(unix)]
     fn shell(script: &str) -> RunSpec {
         RunSpec {
             program: PathBuf::from("sh"),
@@ -154,7 +153,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn streams_standard_output_and_error() {
         let mut lines = Vec::new();
@@ -172,7 +170,6 @@ mod tests {
         assert!(lines.contains(&(Stream::Stderr, "fallo".to_string())));
     }
 
-    #[cfg(unix)]
     #[test]
     fn reports_the_exit_code() {
         let outcome =
@@ -181,7 +178,6 @@ mod tests {
         assert!(!outcome.timed_out);
     }
 
-    #[cfg(unix)]
     #[test]
     fn kills_a_process_that_overruns_the_timeout() {
         let outcome = run_streaming(
@@ -193,7 +189,6 @@ mod tests {
         assert!(outcome.timed_out);
     }
 
-    #[cfg(unix)]
     #[test]
     fn kills_the_whole_process_group_on_timeout() {
         let dir = std::env::temp_dir().join(format!("idecode-grupo-{}", std::process::id()));
@@ -225,5 +220,36 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn streams_output_and_reports_the_exit_code() {
+        let spec = RunSpec {
+            program: PathBuf::from("cmd"),
+            args: ["/C", "echo hola"]
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            cwd: std::env::temp_dir(),
+            env: Vec::new(),
+        };
+        let mut lines = Vec::new();
+        let outcome = run_streaming(&spec, Some(Duration::from_secs(15)), |stream, line| {
+            if stream == Stream::Stdout {
+                lines.push(line);
+            }
+        })
+        .unwrap();
+        assert_eq!(outcome.exit_code, Some(0));
+        assert!(
+            lines.iter().any(|line| line.contains("hola")),
+            "salida inesperada: {lines:?}"
+        );
     }
 }
