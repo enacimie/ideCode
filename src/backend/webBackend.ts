@@ -1,12 +1,15 @@
 import type {
   BuildResult,
+  ClassModel,
   DiagramResult,
   ExampleInfo,
+  GeneratedFile,
   LanguageInfo,
   ProjectSnapshot,
   RunChunk,
   RunOutcome,
   SourceEntry,
+  WriteOutcome,
 } from "../types";
 import type { Backend } from "./types";
 
@@ -178,6 +181,14 @@ export const webBackend: Backend = {
   },
 
   async classDiagram(): Promise<DiagramResult> {
+    throw new Error(DESKTOP_ONLY);
+  },
+
+  async generateCode(_classes: ClassModel[], _language: string): Promise<GeneratedFile[]> {
+    throw new Error(DESKTOP_ONLY);
+  },
+
+  async writeGeneratedFiles(_files: GeneratedFile[], _overwrite: boolean): Promise<WriteOutcome> {
     throw new Error(DESKTOP_ONLY);
   },
 

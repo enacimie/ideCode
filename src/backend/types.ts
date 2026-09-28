@@ -1,12 +1,15 @@
 import type {
   BuildResult,
+  ClassModel,
   DiagramResult,
   ExampleInfo,
+  GeneratedFile,
   LanguageInfo,
   ProjectSnapshot,
   RunChunk,
   RunOutcome,
   SourceEntry,
+  WriteOutcome,
 } from "../types";
 
 export type Backend = {
@@ -25,6 +28,8 @@ export type Backend = {
     onChunk: (chunk: RunChunk) => void,
   ): Promise<RunOutcome>;
   classDiagram(): Promise<DiagramResult>;
+  generateCode(classes: ClassModel[], language: string): Promise<GeneratedFile[]>;
+  writeGeneratedFiles(files: GeneratedFile[], overwrite: boolean): Promise<WriteOutcome>;
   watchCloseRequests(isDirty: () => boolean, onRequest: () => void): Promise<() => void>;
   closeWindow(): Promise<void>;
 };

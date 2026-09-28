@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { backend } from "./backend";
 import { splitArgs } from "./args";
+import { ClassDesigner } from "./components/ClassDesigner";
 import { CloseDialog } from "./components/CloseDialog";
 import { CodeEditor } from "./components/CodeEditor";
 import { DiagramPanel } from "./components/DiagramPanel";
@@ -16,6 +17,7 @@ import type {
   OutputLine,
   ProjectSnapshot,
   RevealTarget,
+  SourceEntry,
 } from "./types";
 import "./App.css";
 
@@ -43,6 +45,7 @@ export default function App() {
   const [languages, setLanguages] = useState<LanguageInfo[]>([]);
   const [examples, setExamples] = useState<ExampleInfo[]>([]);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [designerOpen, setDesignerOpen] = useState(false);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const saveRef = useRef<() => void>(() => undefined);
@@ -151,6 +154,7 @@ export default function App() {
     try {
       const snapshot = await backend.selectProject();
       if (!snapshot) return;
+      setDesignerOpen(false);
       setProject(snapshot);
       setActivePath(snapshot.files[0]?.path ?? null);
       setDirty(new Set());
@@ -169,6 +173,7 @@ export default function App() {
   async function handleExample(example: string) {
     try {
       const snapshot = await backend.loadExample(example);
+      setDesignerOpen(false);
       setProject(snapshot);
       setActivePath(snapshot.files[0]?.path ?? null);
       setDirty(new Set());
@@ -285,6 +290,24 @@ export default function App() {
     setReveal({ path: file.path, line, nonce: Date.now() });
   }
 
+  function handleGenerated(entries: SourceEntry[]) {
+    if (entries.length === 0) return;
+    setProject((current) => {
+      if (!current) return current;
+      const byPath = new Map(current.files.map((file) => [file.path, file]));
+      for (const entry of entries) {
+        byPath.set(entry.path, entry);
+      }
+      return {
+        ...current,
+        files: Array.from(byPath.values()).sort((a, b) => a.relative.localeCompare(b.relative)),
+      };
+    });
+    setActivePath(entries[0].path);
+    setDiagramStale(true);
+    setDiagnosticsStale(true);
+  }
+
   async function handleCreate(name: string) {
     try {
       const file = await backend.createSource(name);
@@ -319,6 +342,7 @@ export default function App() {
         onCompile={() => void handleCompile()}
         onRun={() => void handleRun()}
         onDiagram={() => void handleDiagram()}
+        onDesigner={() => setDesignerOpen(true)}
         onArgsChange={setArgs}
         onEntryChange={setEntry}
       />
@@ -382,6 +406,14 @@ export default function App() {
           />
         )}
       </div>
+
+      {designerOpen && project && (
+        <ClassDesigner
+          project={project}
+          onWritten={handleGenerated}
+          onClose={() => setDesignerOpen(false)}
+        />
+      )}
 
       {notice && <div className={`notice ${notice.kind}`}>{notice.message}</div>}
 

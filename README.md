@@ -29,6 +29,15 @@ y la generación de diagramas ocurren en **Rust**; la interfaz es una capa fina 
   `<<module>>`.
 - Diagrama **clicable**: pulsa una clase, atributo o método para abrirlo en el
   editor en su línea.
+- **Diseñador de clases que genera código a partir del diagrama**: dibuja
+  clases e interfaces en un lienzo SVG (nodos arrastrables, campos, métodos,
+  herencia, implementación, asociación, agregación, composición y
+  dependencia), previsualiza el diagrama Mermaid y el código resultante en
+  **Java**, **Kotlin** o **Python**, y escribe los archivos en el proyecto
+  abierto. Los esqueletos generados compilan: añaden automáticamente los
+  `@Override`/`override` necesarios, `__init__` a partir de los campos,
+  `ABC`/`@abstractmethod` en las interfaces y, en Python, un `main` estático
+  se convierte en `main()` de módulo con su guarda `if __name__`.
 - Ejecución en streaming (salida y errores en vivo) con límite de tiempo y
   limpieza del grupo de procesos completo al vencer.
 - Ejemplos integrados que se descubren solos: cualquier carpeta bajo
@@ -122,6 +131,10 @@ adaptan solos.
   (en Unix muere el grupo completo).
 - En Kotlin, el punto de entrada debe ser un `fun main()` de nivel superior
   (no dentro de un `object` o clase con `@JvmStatic`).
+- El diseñador genera clases e interfaces; las asociaciones, agregaciones,
+  composiciones y dependencias se reflejan en el diagrama pero no en el
+  código, y los cuerpos de los métodos son marcadores `TODO` para que el
+  estudiante los complete.
 
 ## Licencia
 

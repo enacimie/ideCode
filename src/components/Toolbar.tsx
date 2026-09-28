@@ -16,6 +16,7 @@ type Props = {
   onCompile: () => void;
   onRun: () => void;
   onDiagram: () => void;
+  onDesigner: () => void;
   onArgsChange: (value: string) => void;
   onEntryChange: (value: string) => void;
 };
@@ -34,6 +35,7 @@ export function Toolbar({
   onCompile,
   onRun,
   onDiagram,
+  onDesigner,
   onArgsChange,
   onEntryChange,
 }: Props) {
@@ -94,6 +96,9 @@ export function Toolbar({
         </button>
         <button type="button" onClick={onDiagram} disabled={disabled}>
           Diagrama de clases
+        </button>
+        <button type="button" onClick={onDesigner} disabled={disabled}>
+          Diseñador
         </button>
       </div>
 

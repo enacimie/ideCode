@@ -126,6 +126,16 @@ export type DiagramResult = {
   classes: ClassModel[];
 };
 
+export type GeneratedFile = {
+  relative: string;
+  content: string;
+};
+
+export type WriteOutcome = {
+  written: SourceEntry[];
+  conflicts: string[];
+};
+
 export type RevealTarget = {
   path: string;
   line: number;

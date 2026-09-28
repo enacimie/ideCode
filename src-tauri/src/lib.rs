@@ -13,6 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::core::adapter::BuildResult;
 use crate::core::diagram;
+use crate::core::generator::{self, GeneratedFile};
 use crate::core::model::ClassModel;
 use crate::core::project::Project;
 use crate::core::registry;
@@ -68,6 +69,12 @@ struct DiagramResult {
     language: String,
     mermaid: String,
     classes: Vec<ClassModel>,
+}
+
+#[derive(Serialize)]
+struct WriteOutcome {
+    written: Vec<SourceEntry>,
+    conflicts: Vec<String>,
 }
 
 fn current_root(state: &State<'_, ProjectState>) -> Result<PathBuf, String> {
@@ -463,6 +470,72 @@ async fn run_project(
     .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+fn generate_code(classes: Vec<ClassModel>, language: String) -> Result<Vec<GeneratedFile>, String> {
+    generator::generate(&classes, &language)
+}
+
+fn plan_generated<'a>(
+    root: &Path,
+    files: &'a [GeneratedFile],
+) -> Result<Vec<(PathBuf, &'a GeneratedFile)>, String> {
+    files
+        .iter()
+        .map(|file| {
+            if file.relative.is_empty()
+                || file.relative.contains('/')
+                || file.relative.contains('\\')
+                || file.relative.contains("..")
+            {
+                return Err(format!("Nombre de archivo inválido: «{}».", file.relative));
+            }
+            let resolved = resolve(root, &file.relative)?;
+            Ok((resolved, file))
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn write_generated_files(
+    state: State<'_, ProjectState>,
+    files: Vec<GeneratedFile>,
+    overwrite: bool,
+) -> Result<WriteOutcome, String> {
+    let root = current_root(&state)?;
+    let targets = plan_generated(&root, &files)?;
+    let conflicts: Vec<String> = targets
+        .iter()
+        .filter(|(path, _)| path.exists())
+        .map(|(_, file)| file.relative.clone())
+        .collect();
+    if !conflicts.is_empty() && !overwrite {
+        return Ok(WriteOutcome {
+            written: Vec::new(),
+            conflicts,
+        });
+    }
+
+    let mut written = Vec::new();
+    for (path, file) in targets {
+        std::fs::write(&path, &file.content).map_err(|error| error.to_string())?;
+        let content = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+        let name = Path::new(&file.relative)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| file.relative.clone());
+        written.push(SourceEntry {
+            path: path.to_string_lossy().into_owned(),
+            relative: file.relative.clone(),
+            name,
+            content,
+        });
+    }
+    Ok(WriteOutcome {
+        written,
+        conflicts: Vec::new(),
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -485,6 +558,8 @@ pub fn run() {
             create_source,
             compile_project,
             class_diagram,
+            generate_code,
+            write_generated_files,
             run_project
         ])
         .run(tauri::generate_context!())
@@ -931,5 +1006,31 @@ mod tests {
         assert!(mermaid.contains("Main ..> Veterinario"));
 
         let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
+mod generated_paths_tests {
+    use super::*;
+
+    fn file(relative: &str) -> GeneratedFile {
+        GeneratedFile {
+            relative: relative.to_string(),
+            content: String::new(),
+        }
+    }
+
+    #[test]
+    fn plan_generated_rejects_unsafe_names() {
+        let root = std::env::temp_dir();
+        assert!(plan_generated(&root, &[file("../escape.java")]).is_err());
+        assert!(plan_generated(&root, &[file("sub/Perro.java")]).is_err());
+        assert!(plan_generated(&root, &[file("..")]).is_err());
+        assert!(plan_generated(&root, &[file("")]).is_err());
+
+        let files = [file("Perro.java")];
+        let targets = plan_generated(&root, &files).unwrap();
+        assert_eq!(targets.len(), 1);
+        assert!(targets[0].0.ends_with("Perro.java"));
     }
 }

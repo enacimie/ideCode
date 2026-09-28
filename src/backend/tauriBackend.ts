@@ -2,13 +2,16 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
   BuildResult,
+  ClassModel,
   DiagramResult,
   ExampleInfo,
+  GeneratedFile,
   LanguageInfo,
   ProjectSnapshot,
   RunChunk,
   RunOutcome,
   SourceEntry,
+  WriteOutcome,
 } from "../types";
 import type { Backend } from "./types";
 
@@ -64,6 +67,14 @@ export const tauriBackend: Backend = {
 
   classDiagram(): Promise<DiagramResult> {
     return invoke<DiagramResult>("class_diagram");
+  },
+
+  generateCode(classes: ClassModel[], language: string): Promise<GeneratedFile[]> {
+    return invoke<GeneratedFile[]>("generate_code", { classes, language });
+  },
+
+  writeGeneratedFiles(files: GeneratedFile[], overwrite: boolean): Promise<WriteOutcome> {
+    return invoke<WriteOutcome>("write_generated_files", { files, overwrite });
   },
 
   async watchCloseRequests(_isDirty: () => boolean, onRequest: () => void): Promise<() => void> {
