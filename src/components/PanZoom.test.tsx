@@ -83,4 +83,26 @@ describe("PanZoom", () => {
     fireEvent.pointerUp(host, { clientX: 11, clientY: 11 });
     expect(content.style.transform).toBe("translate(0px, 0px) scale(1)");
   });
+
+  it("vuelve al tamaño real centrando el contenido", () => {
+    const { content } = setup();
+    fireEvent.click(screen.getByRole("button", { name: "Acercar" }));
+    expect(content.style.transform).toMatch(/scale\(1\.25\)/);
+    fireEvent.click(screen.getByRole("button", { name: "125 %" }));
+    expect(content.style.transform).toBe("translate(-200px, 0px) scale(1)");
+  });
+
+  it("respeta los límites de zoom mínimo y máximo", () => {
+    const { content } = setup();
+    const zoomIn = screen.getByRole("button", { name: "Acercar" });
+    for (let index = 0; index < 10; index += 1) {
+      fireEvent.click(zoomIn);
+    }
+    expect(content.style.transform).toMatch(/scale\(4\)/);
+    const zoomOut = screen.getByRole("button", { name: "Alejar" });
+    for (let index = 0; index < 20; index += 1) {
+      fireEvent.click(zoomOut);
+    }
+    expect(content.style.transform).toMatch(/scale\(0\.1\)/);
+  });
 });

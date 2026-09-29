@@ -6,11 +6,13 @@ use tree_sitter::{Node, Parser};
 use crate::core::adapter::{
     AdapterError, BuildResult, Diagnostic, LanguageAdapter, RunSpec, Severity,
 };
+use crate::core::diag::shorten;
 use crate::core::model::{
     module_model, ClassKind, ClassModel, FieldModel, FunctionModel, MethodModel, Multiplicity,
     ParameterModel, Visibility,
 };
 use crate::core::project::Project;
+use crate::core::tree::{find_named_child, has_child, text, MAX_TYPE_DEPTH};
 
 const EXTENSIONS: &[&str] = &["py"];
 
@@ -208,10 +210,10 @@ impl LanguageAdapter for PythonAdapter {
 }
 
 const PYTHON_KEYWORDS: &[&str] = &[
-    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
-    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
-    "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
-    "try", "while", "with", "yield",
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue",
+    "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while",
+    "with", "yield",
 ];
 
 fn is_python_identifier(value: &str) -> bool {
@@ -306,6 +308,9 @@ fn parse_project(project: &Project) -> Result<Vec<ClassModel>, AdapterError> {
 
 fn module_prefix(file: &str) -> String {
     let without_extension = file.strip_suffix(".py").unwrap_or(file);
+    if without_extension == "__init__" {
+        return String::new();
+    }
     let base = without_extension
         .strip_suffix("/__init__")
         .unwrap_or(without_extension);
@@ -711,11 +716,7 @@ fn parse_function(node: Node, source: &[u8]) -> FunctionModel {
 }
 
 fn is_async(node: Node) -> bool {
-    let mut cursor = node.walk();
-    let found = node
-        .children(&mut cursor)
-        .any(|child| child.kind() == "async");
-    found
+    has_child(node, "async")
 }
 
 fn parse_parameters(node: Node, source: &[u8]) -> Vec<ParameterModel> {
@@ -819,6 +820,13 @@ fn is_keyword(name: &str) -> bool {
 }
 
 fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
+    collect_type_names_at(node, source, found, 0);
+}
+
+fn collect_type_names_at(node: Node, source: &[u8], found: &mut Vec<String>, depth: usize) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     if node.kind() == "identifier" {
         let name = text(node, source);
         if !name.is_empty() {
@@ -831,7 +839,7 @@ fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             continue;
         }
-        collect_type_names(child, source, found);
+        collect_type_names_at(child, source, found, depth + 1);
     }
 }
 
@@ -846,6 +854,13 @@ fn collect_type_names_from_text(annotation: &str, found: &mut Vec<String>) {
 }
 
 fn annotation_names(annotation: &str) -> Vec<String> {
+    annotation_names_at(annotation, 0)
+}
+
+fn annotation_names_at(annotation: &str, depth: usize) -> Vec<String> {
+    if depth > MAX_TYPE_DEPTH {
+        return Vec::new();
+    }
     let trimmed = annotation.trim();
     if trimmed.is_empty() {
         return Vec::new();
@@ -855,7 +870,7 @@ fn annotation_names(annotation: &str) -> Vec<String> {
     if union_parts.len() > 1 {
         return union_parts
             .iter()
-            .flat_map(|part| annotation_names(part))
+            .flat_map(|part| annotation_names_at(part, depth + 1))
             .collect();
     }
 
@@ -867,7 +882,7 @@ fn annotation_names(annotation: &str) -> Vec<String> {
                 names.push(head.to_string());
             }
             for part in split_top_level(&trimmed[start + 1..trimmed.len() - 1], ',') {
-                names.extend(annotation_names(&part));
+                names.extend(annotation_names_at(&part, depth + 1));
             }
             return names;
         }
@@ -877,7 +892,7 @@ fn annotation_names(annotation: &str) -> Vec<String> {
     if comma_parts.len() > 1 {
         return comma_parts
             .iter()
-            .flat_map(|part| annotation_names(part))
+            .flat_map(|part| annotation_names_at(part, depth + 1))
             .collect();
     }
 
@@ -1013,18 +1028,6 @@ fn sorted_unique(values: Vec<String>) -> Vec<String> {
     collected
 }
 
-fn find_named_child<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .named_children(&mut cursor)
-        .find(|child| child.kind() == kind);
-    found
-}
-
-fn text(node: Node, source: &[u8]) -> String {
-    node.utf8_text(source).unwrap_or("").trim().to_string()
-}
-
 fn parse_python(output: &str, root: &Path) -> Vec<Diagnostic> {
     let lines: Vec<&str> = output.lines().collect();
     let mut diagnostics = Vec::new();
@@ -1037,6 +1040,10 @@ fn parse_python(output: &str, root: &Path) -> Vec<Diagnostic> {
             continue;
         };
         let (file, rest) = location.1.split_once('"').unwrap_or(("", ""));
+        if file.is_empty() {
+            index += 1;
+            continue;
+        }
         let Some(line_number) = rest
             .trim_start_matches(',')
             .trim_start()
@@ -1084,15 +1091,6 @@ fn parse_python(output: &str, root: &Path) -> Vec<Diagnostic> {
     }
 
     diagnostics
-}
-
-fn shorten(path: &str, root: &Path) -> Option<String> {
-    let canonical = Path::new(path).canonicalize().ok()?;
-    let root = root.canonicalize().ok()?;
-    canonical
-        .strip_prefix(root)
-        .ok()
-        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -1363,6 +1361,7 @@ class Perro(Animal):
         assert_eq!(module_prefix("main.py"), "main");
         assert_eq!(module_prefix("pkg/utilidades.py"), "pkg.utilidades");
         assert_eq!(module_prefix("pkg/__init__.py"), "pkg");
+        assert_eq!(module_prefix("__init__.py"), "");
     }
 
     #[test]
@@ -1376,6 +1375,13 @@ class Perro(Animal):
         assert!(adapter.validate_new_file("class.py").is_err());
         assert!(adapter.validate_new_file("def.py").is_err());
         assert!(adapter.validate_new_file("import.py").is_err());
+    }
+
+    #[test]
+    fn truncates_pathological_generic_nesting() {
+        let deep = format!("list[{}int{}]", "list[".repeat(2000), "]".repeat(2000));
+        let names = annotation_names(&deep);
+        assert!(names.contains(&"list".to_string()));
     }
 
     #[test]

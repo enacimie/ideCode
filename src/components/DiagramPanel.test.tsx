@@ -140,6 +140,28 @@ describe("DiagramPanel", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("muestra el error cuando mermaid no puede renderizar", async () => {
+    const { container } = render(
+      <DiagramPanel
+        chart="esto no es @@ un diagrama"
+        classes={[]}
+        stale={false}
+        onSelect={vi.fn()}
+        onRefresh={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+
+    await waitFor(
+      () => {
+        const error = container.querySelector(".diagram-error");
+        if (!error || !error.textContent) throw new Error("sin mensaje de error todavía");
+        return error;
+      },
+      { timeout: 30000 },
+    );
+  });
+
   it("renderiza un diagrama con un módulo de funciones libres", async () => {
     const module: ClassModel = {
       name: "utilidades",

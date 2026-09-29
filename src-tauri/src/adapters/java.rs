@@ -9,11 +9,16 @@ use tree_sitter::{Node, Parser};
 use crate::core::adapter::{
     AdapterError, BuildResult, Diagnostic, LanguageAdapter, RunSpec, Severity,
 };
+use crate::core::diag::shorten;
 use crate::core::model::{
     ClassKind, ClassModel, EnumConstantModel, FieldModel, MethodModel, Multiplicity,
     ParameterModel, Visibility,
 };
 use crate::core::project::Project;
+use crate::core::tree::{
+    find_child, find_named_child, find_not_kind, first_named_text, text, visibility_with,
+    MAX_TYPE_DEPTH,
+};
 
 const EXTENSIONS: &[&str] = &["java"];
 const CLASSES_DIR: &str = ".idecode/classes";
@@ -214,12 +219,56 @@ impl LanguageAdapter for JavaAdapter {
 }
 
 const JAVA_KEYWORDS: &[&str] = &[
-    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class",
-    "const", "continue", "default", "do", "double", "else", "enum", "extends", "final",
-    "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int",
-    "interface", "long", "native", "new", "package", "private", "protected", "public",
-    "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
-    "throw", "throws", "transient", "try", "void", "volatile", "while",
+    "abstract",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "instanceof",
+    "int",
+    "interface",
+    "long",
+    "native",
+    "new",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "try",
+    "void",
+    "volatile",
+    "while",
 ];
 
 fn is_java_identifier(value: &str) -> bool {
@@ -330,12 +379,19 @@ fn collect_types(
 }
 
 fn nested_declarations<'tree>(node: Node<'tree>, found: &mut Vec<Node<'tree>>) {
+    nested_declarations_at(node, found, 0);
+}
+
+fn nested_declarations_at<'tree>(node: Node<'tree>, found: &mut Vec<Node<'tree>>, depth: usize) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             found.push(child);
         } else {
-            nested_declarations(child, found);
+            nested_declarations_at(child, found, depth + 1);
         }
     }
 }
@@ -421,6 +477,13 @@ fn uses_of(node: Node, source: &[u8]) -> Vec<String> {
 }
 
 fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
+    collect_type_names_at(node, source, found, 0);
+}
+
+fn collect_type_names_at(node: Node, source: &[u8], found: &mut Vec<String>, depth: usize) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     match node.kind() {
         "type_identifier" => {
             let name = text(node, source);
@@ -432,7 +495,7 @@ fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
         "scoped_type_identifier" => {
             let mut cursor = node.walk();
             if let Some(last) = node.named_children(&mut cursor).last() {
-                collect_type_names(last, source, found);
+                collect_type_names_at(last, source, found, depth + 1);
             }
             return;
         }
@@ -444,11 +507,23 @@ fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             continue;
         }
-        collect_type_names(child, source, found);
+        collect_type_names_at(child, source, found, depth + 1);
     }
 }
 
 fn collect_type_parameter_names(node: Node, source: &[u8], found: &mut Vec<String>) {
+    collect_type_parameter_names_at(node, source, found, 0);
+}
+
+fn collect_type_parameter_names_at(
+    node: Node,
+    source: &[u8],
+    found: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     if node.kind() == "type_parameter" {
         let mut cursor = node.walk();
         if let Some(name) = node
@@ -465,7 +540,7 @@ fn collect_type_parameter_names(node: Node, source: &[u8], found: &mut Vec<Strin
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             continue;
         }
-        collect_type_parameter_names(child, source, found);
+        collect_type_parameter_names_at(child, source, found, depth + 1);
     }
 }
 
@@ -757,16 +832,16 @@ fn modifiers_of(node: Node, source: &[u8]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Tabla de visibilidad de Java: sin modificador es paquete.
+/// Ver `crate::core::tree::visibility_with`.
+const VISIBILITY_RULES: &[(&str, Visibility)] = &[
+    ("public", Visibility::Public),
+    ("protected", Visibility::Protected),
+    ("private", Visibility::Private),
+];
+
 fn visibility(modifiers: &[String]) -> Visibility {
-    if modifiers.iter().any(|modifier| modifier == "public") {
-        Visibility::Public
-    } else if modifiers.iter().any(|modifier| modifier == "protected") {
-        Visibility::Protected
-    } else if modifiers.iter().any(|modifier| modifier == "private") {
-        Visibility::Private
-    } else {
-        Visibility::Package
-    }
+    visibility_with(modifiers, VISIBILITY_RULES, Visibility::Package)
 }
 
 fn extends_of(node: Node, source: &[u8]) -> Vec<String> {
@@ -801,40 +876,6 @@ fn package_name(root: Node, source: &[u8]) -> Option<String> {
         .map(|name| text(name, source))
 }
 
-fn first_named_text(node: Node<'_>, source: &[u8]) -> Option<String> {
-    let mut cursor = node.walk();
-    let first = node.named_children(&mut cursor).next();
-    first.map(|child| text(child, source))
-}
-
-fn find_child<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .children(&mut cursor)
-        .find(|child| child.kind() == kind);
-    found
-}
-
-fn find_named_child<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .named_children(&mut cursor)
-        .find(|child| child.kind() == kind);
-    found
-}
-
-fn find_not_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .named_children(&mut cursor)
-        .find(|child| child.kind() != kind);
-    found
-}
-
-fn text(node: Node, source: &[u8]) -> String {
-    node.utf8_text(source).unwrap_or("").trim().to_string()
-}
-
 fn parse_javac(output: &str, root: &Path) -> Vec<Diagnostic> {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     let pattern = PATTERN.get_or_init(|| {
@@ -861,15 +902,6 @@ fn parse_javac(output: &str, root: &Path) -> Vec<Diagnostic> {
             })
         })
         .collect()
-}
-
-fn shorten(path: &str, root: &Path) -> Option<String> {
-    let canonical = Path::new(path).canonicalize().ok()?;
-    let root = root.canonicalize().ok()?;
-    canonical
-        .strip_prefix(root)
-        .ok()
-        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -1396,5 +1428,14 @@ record Punto(int x, int y) {}
         assert!(adapter.validate_new_file("class.java").is_err());
         assert!(adapter.validate_new_file("int.java").is_err());
         assert!(adapter.validate_new_file("void.java").is_err());
+    }
+
+    #[test]
+    fn survives_pathological_generic_nesting() {
+        let nested = format!("List<{}String{}>", "List<".repeat(200), ">".repeat(200));
+        let source = format!("public class Caja {{ {nested} campo; }}");
+        let classes = parse_source("Caja.java", &source).expect("analiza Caja");
+        assert_eq!(classes.len(), 1);
+        assert_eq!(classes[0].name, "Caja");
     }
 }

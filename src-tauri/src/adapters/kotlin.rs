@@ -10,11 +10,16 @@ use tree_sitter::{Node, Parser};
 use crate::core::adapter::{
     AdapterError, BuildResult, Diagnostic, LanguageAdapter, RunSpec, Severity,
 };
+use crate::core::diag::{shorten, sorted_unique};
 use crate::core::model::{
     module_model, ClassKind, ClassModel, EnumConstantModel, FieldModel, FunctionModel, MethodModel,
     Multiplicity, ParameterModel, Visibility,
 };
 use crate::core::project::Project;
+use crate::core::tree::{
+    find_child, find_named_child, find_named_child_of_kinds, has_token, text, visibility_with,
+    MAX_TYPE_DEPTH,
+};
 
 const EXTENSIONS: &[&str] = &["kt"];
 const CLASSES_DIR: &str = ".idecode/classes";
@@ -241,9 +246,34 @@ impl LanguageAdapter for KotlinAdapter {
 }
 
 const KOTLIN_KEYWORDS: &[&str] = &[
-    "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
-    "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
-    "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
 ];
 
 fn is_kotlin_identifier(value: &str) -> bool {
@@ -302,40 +332,44 @@ fn kotlin_stdlib() -> Option<PathBuf> {
     }
 
     for root in roots {
-        let lib = root.join("lib");
-        let plain = lib.join("kotlin-stdlib.jar");
-        if plain.is_file() {
-            return Some(plain);
-        }
-        let Ok(entries) = fs::read_dir(&lib) else {
-            continue;
-        };
-        let mut candidate = entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.extension()
-                    .and_then(|value| value.to_str())
-                    .is_some_and(|value| value == "jar")
-                    && path
-                        .file_name()
-                        .and_then(|value| value.to_str())
-                        .is_some_and(|value| {
-                            value.starts_with("kotlin-stdlib")
-                                && !value.contains("-sources")
-                                && !value.contains("-javadoc")
-                        })
-            })
-            .min_by_key(|path| {
-                path.file_name()
-                    .map(|value| value.to_string_lossy().len())
-                    .unwrap_or(usize::MAX)
-            });
-        if candidate.is_some() {
-            return candidate.take();
+        if let Some(found) = stdlib_in_lib(&root.join("lib")) {
+            return Some(found);
         }
     }
     None
+}
+
+/// Localiza el stdlib en un directorio `lib`: primero el jar exacto y,
+/// si no existe, el candidato más corto (sin fuentes ni javadoc).
+fn stdlib_in_lib(lib: &Path) -> Option<PathBuf> {
+    let plain = lib.join("kotlin-stdlib.jar");
+    if plain.is_file() {
+        return Some(plain);
+    }
+    let Ok(entries) = fs::read_dir(lib) else {
+        return None;
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value == "jar")
+                && path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|value| {
+                        value.starts_with("kotlin-stdlib")
+                            && !value.contains("-sources")
+                            && !value.contains("-javadoc")
+                    })
+        })
+        .min_by_key(|path| {
+            path.file_name()
+                .map(|value| value.to_string_lossy().len())
+                .unwrap_or(usize::MAX)
+        })
 }
 
 fn missing_tool(error: std::io::Error, tool: &Path) -> AdapterError {
@@ -699,7 +733,7 @@ fn field_from_named(node: Node, source: &[u8], is_static: bool) -> Option<FieldM
     if name.is_empty() {
         return None;
     }
-    let type_node = find_child_of_kinds(declaration, TYPE_NODE_KINDS);
+    let type_node = find_named_child_of_kinds(declaration, TYPE_NODE_KINDS);
     let ty = type_node.map(|node| text(node, source)).unwrap_or_default();
     let (targets, multiplicity) = match type_node {
         Some(node) => type_summary(node, source),
@@ -730,7 +764,10 @@ fn parse_method(node: Node, source: &[u8], is_static: bool) -> MethodModel {
         return_ty: return_type_of(node, source),
         visibility: visibility(&modifiers),
         is_static,
-        is_abstract: !has_body || modifiers.iter().any(|modifier| modifier == "abstract"),
+        // En `object` y `companion object` no hay métodos abstractos:
+        // una función sin cuerpo ahí es una declaración externa, no abstracta.
+        is_abstract: !is_static
+            && (!has_body || modifiers.iter().any(|modifier| modifier == "abstract")),
         is_constructor: false,
         is_async: modifiers.iter().any(|modifier| modifier == "suspend"),
         type_parameters: type_parameters_of(node, source),
@@ -808,7 +845,7 @@ fn parse_parameters(node: Node, source: &[u8]) -> Vec<ParameterModel> {
                 if name.is_empty() {
                     continue;
                 }
-                let ty = find_child_of_kinds(child, TYPE_NODE_KINDS)
+                let ty = find_named_child_of_kinds(child, TYPE_NODE_KINDS)
                     .map(|ty| text(ty, source))
                     .unwrap_or_default();
                 collected.push(ParameterModel {
@@ -886,6 +923,13 @@ fn uses_of(node: Node, source: &[u8]) -> Vec<String> {
 }
 
 fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
+    collect_type_names_at(node, source, found, 0);
+}
+
+fn collect_type_names_at(node: Node, source: &[u8], found: &mut Vec<String>, depth: usize) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     if node.kind() == "user_type" {
         if let Some(name) = last_identifier(node, source) {
             found.push(name);
@@ -893,7 +937,7 @@ fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             if child.kind() == "type_arguments" {
-                collect_type_names(child, source, found);
+                collect_type_names_at(child, source, found, depth + 1);
             }
         }
         return;
@@ -904,11 +948,23 @@ fn collect_type_names(node: Node, source: &[u8], found: &mut Vec<String>) {
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             continue;
         }
-        collect_type_names(child, source, found);
+        collect_type_names_at(child, source, found, depth + 1);
     }
 }
 
 fn collect_type_parameter_names(node: Node, source: &[u8], found: &mut Vec<String>) {
+    collect_type_parameter_names_at(node, source, found, 0);
+}
+
+fn collect_type_parameter_names_at(
+    node: Node,
+    source: &[u8],
+    found: &mut Vec<String>,
+    depth: usize,
+) {
+    if depth > MAX_TYPE_DEPTH {
+        return;
+    }
     if node.kind() == "type_parameter" {
         if let Some(name) = find_named_child(node, "identifier") {
             found.push(text(name, source));
@@ -921,7 +977,7 @@ fn collect_type_parameter_names(node: Node, source: &[u8], found: &mut Vec<Strin
         if TYPE_DECLARATIONS.contains(&child.kind()) {
             continue;
         }
-        collect_type_parameter_names(child, source, found);
+        collect_type_parameter_names_at(child, source, found, depth + 1);
     }
 }
 
@@ -977,13 +1033,20 @@ fn outer_type_info(node: Node, source: &[u8]) -> (String, bool) {
 }
 
 fn last_user_type_name(node: Node, source: &[u8]) -> Option<String> {
+    last_user_type_name_at(node, source, 0)
+}
+
+fn last_user_type_name_at(node: Node, source: &[u8], depth: usize) -> Option<String> {
+    if depth > MAX_TYPE_DEPTH {
+        return None;
+    }
     if node.kind() == "user_type" {
         return last_identifier(node, source);
     }
     let mut cursor = node.walk();
     let found = node
         .named_children(&mut cursor)
-        .find_map(|child| last_user_type_name(child, source));
+        .find_map(|child| last_user_type_name_at(child, source, depth + 1));
     found
 }
 
@@ -1008,62 +1071,16 @@ fn modifiers_of(node: Node, source: &[u8]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Tabla de visibilidad de Kotlin: sin modificador es público.
+/// Ver `crate::core::tree::visibility_with`.
+const VISIBILITY_RULES: &[(&str, Visibility)] = &[
+    ("private", Visibility::Private),
+    ("protected", Visibility::Protected),
+    ("internal", Visibility::Package),
+];
+
 fn visibility(modifiers: &[String]) -> Visibility {
-    if modifiers.iter().any(|modifier| modifier == "private") {
-        Visibility::Private
-    } else if modifiers.iter().any(|modifier| modifier == "protected") {
-        Visibility::Protected
-    } else if modifiers.iter().any(|modifier| modifier == "internal") {
-        Visibility::Package
-    } else {
-        Visibility::Public
-    }
-}
-
-fn has_token(node: Node, kind: &str) -> bool {
-    let mut cursor = node.walk();
-    let found = node
-        .children(&mut cursor)
-        .any(|child| !child.is_named() && child.kind() == kind);
-    found
-}
-
-fn sorted_unique(values: Vec<String>) -> Vec<String> {
-    let mut collected: Vec<String> = values
-        .into_iter()
-        .filter(|value| !value.is_empty())
-        .collect();
-    collected.sort();
-    collected.dedup();
-    collected
-}
-
-fn find_child<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .children(&mut cursor)
-        .find(|child| child.kind() == kind);
-    found
-}
-
-fn find_named_child<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .named_children(&mut cursor)
-        .find(|child| child.kind() == kind);
-    found
-}
-
-fn find_child_of_kinds<'tree>(node: Node<'tree>, kinds: &[&str]) -> Option<Node<'tree>> {
-    let mut cursor = node.walk();
-    let found = node
-        .named_children(&mut cursor)
-        .find(|child| kinds.contains(&child.kind()));
-    found
-}
-
-fn text(node: Node, source: &[u8]) -> String {
-    node.utf8_text(source).unwrap_or("").trim().to_string()
+    visibility_with(modifiers, VISIBILITY_RULES, Visibility::Public)
 }
 
 fn parse_kotlinc(output: &str, root: &Path) -> Vec<Diagnostic> {
@@ -1117,15 +1134,6 @@ fn toolchain_crash(output: &str) -> bool {
         || output.contains("Exception while analyzing")
         || output.contains("PermittedSubclasses requires ASM")
         || output.contains("UnsupportedOperationException")
-}
-
-fn shorten(path: &str, root: &Path) -> Option<String> {
-    let canonical = Path::new(path).canonicalize().ok()?;
-    let root = root.canonicalize().ok()?;
-    canonical
-        .strip_prefix(root)
-        .ok()
-        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -1619,6 +1627,50 @@ class Perro : Mascota(), Cerrable {
         assert!(adapter.validate_new_file("fun.kt").is_err());
         assert!(adapter.validate_new_file("class.kt").is_err());
         assert!(adapter.validate_new_file("val.kt").is_err());
+    }
+
+    #[test]
+    fn survives_pathological_generic_nesting() {
+        let nested = format!("List<{}String{}>", "List<".repeat(200), ">".repeat(200));
+        let source = format!("class Caja {{ var campo: {nested} = emptyList() }}");
+        let classes = parse_one("Caja.kt", &source);
+        assert!(classes.iter().any(|class| class.name == "Caja"));
+    }
+
+    #[test]
+    fn object_functions_without_body_are_not_abstract() {
+        let classes = parse_one("Contador.kt", "object Contador { fun proximo(): Int }");
+        let contador = classes
+            .iter()
+            .find(|class| class.name == "Contador")
+            .unwrap();
+        assert_eq!(contador.methods.len(), 1);
+        assert!(!contador.methods[0].is_abstract);
+    }
+
+    #[test]
+    fn prefers_the_exact_stdlib_jar() {
+        let root = std::env::temp_dir().join(format!("idecode-stdlib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let lib = root.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+
+        assert!(stdlib_in_lib(&lib).is_none());
+
+        std::fs::write(lib.join("kotlin-stdlib-jdk8.jar"), "").unwrap();
+        std::fs::write(lib.join("kotlin-stdlib-sources.jar"), "").unwrap();
+        assert_eq!(
+            stdlib_in_lib(&lib).as_deref(),
+            Some(lib.join("kotlin-stdlib-jdk8.jar").as_path())
+        );
+
+        std::fs::write(lib.join("kotlin-stdlib.jar"), "").unwrap();
+        assert_eq!(
+            stdlib_in_lib(&lib).as_deref(),
+            Some(lib.join("kotlin-stdlib.jar").as_path())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

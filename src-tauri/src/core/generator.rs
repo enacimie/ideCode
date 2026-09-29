@@ -204,7 +204,9 @@ impl<'a> Context<'a> {
                 };
                 let wanted = signature(method);
                 let matches = |candidates: &[MethodModel]| {
-                    candidates.iter().any(|candidate| signature(candidate) == wanted)
+                    candidates
+                        .iter()
+                        .any(|candidate| signature(candidate) == wanted)
                 };
                 if matches(&class.methods) || matches(&required) {
                     continue;
@@ -418,11 +420,12 @@ impl<'a> Context<'a> {
         }
 
         for field in self.missing_interface_properties(class) {
+            let ty = kotlin_type(&field.ty);
             body.push(format!(
                 "    override val {}: {} = {}",
                 field.name,
-                kotlin_type(&field.ty),
-                kotlin_default(&kotlin_type(&field.ty))
+                ty,
+                kotlin_default(&ty)
             ));
         }
 

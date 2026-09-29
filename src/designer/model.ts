@@ -240,12 +240,14 @@ export function visibilityMarker(visibility: Visibility): string {
 export function buildMermaid(state: DesignerState): string {
   const lines: string[] = ["classDiagram", "    direction TB"];
   const used = new Map<string, number>();
-  const nameOf = new Map(state.nodes.map((node) => {
-    const base = sanitize(node.name);
-    const count = used.get(base) ?? 0;
-    used.set(base, count + 1);
-    return [node.id, count > 0 ? `${base}_${count}` : base];
-  }));
+  const nameOf = new Map(
+    state.nodes.map((node) => {
+      const base = sanitize(node.name);
+      const count = used.get(base) ?? 0;
+      used.set(base, count + 1);
+      return [node.id, count > 0 ? `${base}_${count}` : base];
+    }),
+  );
 
   for (const node of state.nodes) {
     const name = nameOf.get(node.id) ?? sanitize(node.name);

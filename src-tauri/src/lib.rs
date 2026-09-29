@@ -291,7 +291,15 @@ async fn select_project(
     app: AppHandle,
     state: State<'_, ProjectState>,
 ) -> Result<Option<ProjectSnapshot>, String> {
-    let Some(folder) = app.dialog().file().blocking_pick_folder() else {
+    // El diálogo bloqueante se ejecuta en el pool de bloqueo para no
+    // detener el runtime async mientras el alumno elige carpeta.
+    let dialog_app = app.clone();
+    let folder = tauri::async_runtime::spawn_blocking(move || {
+        dialog_app.dialog().file().blocking_pick_folder()
+    })
+    .await
+    .map_err(|error| error.to_string())?;
+    let Some(folder) = folder else {
         return Ok(None);
     };
     let root = folder.into_path().map_err(|error| error.to_string())?;
