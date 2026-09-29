@@ -1,6 +1,6 @@
 [package]
 name = "idecode"
-version = "0.2.0"
+version = "0.2.1"
 description = "Mini IDE modular para aprender a programar"
 authors = ["Eduardo Nacimiento-García <enacimie@ull.edu.es>"]
 license = "AGPL-3.0-or-later"
