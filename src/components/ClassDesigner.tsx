@@ -25,6 +25,7 @@ import {
   type DesignerField,
   type DesignerMethod,
   type DesignerNode,
+  type DesignerParam,
   type DesignerState,
   type RelationKind,
 } from "../designer/model";
@@ -95,6 +96,27 @@ type Props = {
 type Selection = { type: "node" | "edge"; id: string } | null;
 
 type View = { k: number; tx: number; ty: number };
+
+function ParamsInput({
+  params,
+  onCommit,
+}: {
+  params: DesignerParam[];
+  onCommit: (params: DesignerParam[]) => void;
+}) {
+  const [draft, setDraft] = useState(() => formatParams(params));
+  return (
+    <input
+      className="params-input"
+      placeholder="parámetros: nombre: tipo, edad: int"
+      value={draft}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        onCommit(parseParams(event.target.value));
+      }}
+    />
+  );
+}
 
 function zoomViewAt(view: View, mx: number, my: number, factor: number): View {
   const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.k * factor));
@@ -827,66 +849,75 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
               </h4>
               {selectedNode.fields.map((field) => (
                 <div className="member-row" key={field.id}>
-                  <input
-                    placeholder="nombre"
-                    value={field.name}
-                    onChange={(event) =>
-                      updateField(selectedNode.id, field.id, { name: event.target.value })
-                    }
-                  />
-                  <input
-                    placeholder="tipo"
-                    value={field.ty}
-                    onChange={(event) =>
-                      updateField(selectedNode.id, field.id, { ty: event.target.value })
-                    }
-                  />
-                  <select
-                    value={field.visibility}
-                    onChange={(event) =>
-                      updateField(selectedNode.id, field.id, {
-                        visibility: event.target.value as Visibility,
-                      })
-                    }
-                  >
-                    {VISIBILITIES.map((visibility) => (
-                      <option key={visibility} value={visibility}>
-                        {VISIBILITY_LABELS[visibility]}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="designer-check" title="estático">
+                  <div className="member-main">
                     <input
-                      type="checkbox"
-                      checked={field.isStatic}
+                      placeholder="nombre"
+                      value={field.name}
                       onChange={(event) =>
-                        updateField(selectedNode.id, field.id, { isStatic: event.target.checked })
+                        updateField(selectedNode.id, field.id, { name: event.target.value })
                       }
                     />
-                    <span>S</span>
-                  </label>
-                  <label className="designer-check" title="final">
                     <input
-                      type="checkbox"
-                      checked={field.isFinal}
+                      placeholder="tipo"
+                      value={field.ty}
                       onChange={(event) =>
-                        updateField(selectedNode.id, field.id, { isFinal: event.target.checked })
+                        updateField(selectedNode.id, field.id, { ty: event.target.value })
                       }
                     />
-                    <span>F</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateNode(selectedNode.id, {
-                        fields: selectedNode.fields.filter(
-                          (candidate) => candidate.id !== field.id,
-                        ),
-                      })
-                    }
-                  >
-                    ✕
-                  </button>
+                    <button
+                      type="button"
+                      title="Quitar campo"
+                      onClick={() =>
+                        updateNode(selectedNode.id, {
+                          fields: selectedNode.fields.filter(
+                            (candidate) => candidate.id !== field.id,
+                          ),
+                        })
+                      }
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="member-meta">
+                    <select
+                      value={field.visibility}
+                      onChange={(event) =>
+                        updateField(selectedNode.id, field.id, {
+                          visibility: event.target.value as Visibility,
+                        })
+                      }
+                    >
+                      {VISIBILITIES.map((visibility) => (
+                        <option key={visibility} value={visibility}>
+                          {VISIBILITY_LABELS[visibility]}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="designer-check" title="estático">
+                      <input
+                        type="checkbox"
+                        checked={field.isStatic}
+                        onChange={(event) =>
+                          updateField(selectedNode.id, field.id, {
+                            isStatic: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>S</span>
+                    </label>
+                    <label className="designer-check" title="final">
+                      <input
+                        type="checkbox"
+                        checked={field.isFinal}
+                        onChange={(event) =>
+                          updateField(selectedNode.id, field.id, {
+                            isFinal: event.target.checked,
+                          })
+                        }
+                      />
+                      <span>F</span>
+                    </label>
+                  </div>
                 </div>
               ))}
 
@@ -905,7 +936,7 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
               </h4>
               {selectedNode.methods.map((method) => (
                 <div className="method-block" key={method.id}>
-                  <div className="member-row">
+                  <div className="member-main">
                     <input
                       placeholder="nombre"
                       value={method.name}
@@ -920,6 +951,21 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
                         updateMethod(selectedNode.id, method.id, { returnTy: event.target.value })
                       }
                     />
+                    <button
+                      type="button"
+                      title="Quitar método"
+                      onClick={() =>
+                        updateNode(selectedNode.id, {
+                          methods: selectedNode.methods.filter(
+                            (candidate) => candidate.id !== method.id,
+                          ),
+                        })
+                      }
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="member-meta">
                     <select
                       value={method.visibility}
                       onChange={(event) =>
@@ -959,28 +1005,10 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
                       />
                       <span>A</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateNode(selectedNode.id, {
-                          methods: selectedNode.methods.filter(
-                            (candidate) => candidate.id !== method.id,
-                          ),
-                        })
-                      }
-                    >
-                      ✕
-                    </button>
                   </div>
-                  <input
-                    className="params-input"
-                    placeholder="parámetros: nombre: tipo, edad: int"
-                    value={formatParams(method.params)}
-                    onChange={(event) =>
-                      updateMethod(selectedNode.id, method.id, {
-                        params: parseParams(event.target.value),
-                      })
-                    }
+                  <ParamsInput
+                    params={method.params}
+                    onCommit={(params) => updateMethod(selectedNode.id, method.id, { params })}
                   />
                 </div>
               ))}

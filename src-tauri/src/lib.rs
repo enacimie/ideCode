@@ -737,7 +737,8 @@ mod tests {
 
     #[test]
     fn an_empty_folder_accepts_any_supported_language() {
-        let root = std::env::temp_dir().join(format!("idecode-vacia-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("idecode-vacia-lenguaje-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
 
@@ -770,7 +771,8 @@ mod tests {
         static FIXTURE: Dir<'_> =
             include_dir!("$CARGO_MANIFEST_DIR/tests/fixtures/ejemplo_anidado");
 
-        let root = std::env::temp_dir().join(format!("idecode-anidado-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("idecode-anidado-plano-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         write_example(&FIXTURE, &root).unwrap();
 

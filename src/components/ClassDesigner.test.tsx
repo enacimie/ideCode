@@ -58,6 +58,31 @@ describe("ClassDesigner", () => {
     await waitFor(() => expect(screen.getByText(/Perro\.java/)).toBeTruthy(), { timeout: 3000 });
   });
 
+  it("permite escribir parámetros con dos puntos y los lleva al modelo", async () => {
+    render(<ClassDesigner project={project} onWritten={vi.fn()} onClose={vi.fn()} />);
+    addClassNamed("Perro");
+    fireEvent.click(screen.getByRole("button", { name: "+ Método" }));
+    fireEvent.change(screen.getByPlaceholderText("nombre"), { target: { value: "comer" } });
+
+    const params = screen.getByPlaceholderText(/parámetros/) as HTMLInputElement;
+    fireEvent.change(params, { target: { value: "n" } });
+    expect(params.value).toBe("n");
+    fireEvent.change(params, { target: { value: "nombre:" } });
+    expect(params.value).toBe("nombre:");
+    fireEvent.change(params, { target: { value: "nombre: String, edad: int" } });
+    expect(params.value).toBe("nombre: String, edad: int");
+
+    fireEvent.click(screen.getByRole("button", { name: "Código" }));
+    await waitFor(() => expect(generateCode).toHaveBeenCalled(), { timeout: 3000 });
+    const [models] = generateCode.mock.calls[generateCode.mock.calls.length - 1];
+    const method = models[0].methods[0];
+    expect(method.name).toBe("comer");
+    expect(method.parameters).toEqual([
+      { name: "nombre", ty: "String" },
+      { name: "edad", ty: "int" },
+    ]);
+  });
+
   it("escribe los archivos generados en el proyecto", async () => {
     writeGeneratedFiles.mockResolvedValue({ written: [writtenEntry], conflicts: [] });
     const onWritten = vi.fn();
