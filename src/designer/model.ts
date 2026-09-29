@@ -127,22 +127,34 @@ export function createMethod(): DesignerMethod {
 }
 
 export function parseParams(text: string): DesignerParam[] {
-  return text
-    .split(/[,;]/)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0)
-    .map((chunk) => {
-      const separator = chunk.indexOf(":");
-      if (separator < 0) {
-        return { id: newId("param"), name: chunk, ty: "" };
-      }
-      return {
-        id: newId("param"),
-        name: chunk.slice(0, separator).trim(),
-        ty: chunk.slice(separator + 1).trim(),
-      };
-    })
-    .filter((param) => param.name.length > 0);
+  const params: DesignerParam[] = [];
+  let current = "";
+  let depth = 0;
+  for (const char of text) {
+    if (char === "<") depth++;
+    if (char === ">") depth = Math.max(0, depth - 1);
+    if ((char === "," || char === ";") && depth === 0) {
+      params.push(parseParamChunk(current));
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  params.push(parseParamChunk(current));
+  return params.filter((param) => param.name.length > 0);
+}
+
+function parseParamChunk(chunk: string): DesignerParam {
+  const trimmed = chunk.trim();
+  const separator = trimmed.indexOf(":");
+  if (separator < 0) {
+    return { id: newId("param"), name: trimmed, ty: "" };
+  }
+  return {
+    id: newId("param"),
+    name: trimmed.slice(0, separator).trim(),
+    ty: trimmed.slice(separator + 1).trim(),
+  };
 }
 
 export function formatParams(params: DesignerParam[]): string {
@@ -227,7 +239,13 @@ export function visibilityMarker(visibility: Visibility): string {
 
 export function buildMermaid(state: DesignerState): string {
   const lines: string[] = ["classDiagram", "    direction TB"];
-  const nameOf = new Map(state.nodes.map((node) => [node.id, sanitize(node.name)]));
+  const used = new Map<string, number>();
+  const nameOf = new Map(state.nodes.map((node) => {
+    const base = sanitize(node.name);
+    const count = used.get(base) ?? 0;
+    used.set(base, count + 1);
+    return [node.id, count > 0 ? `${base}_${count}` : base];
+  }));
 
   for (const node of state.nodes) {
     const name = nameOf.get(node.id) ?? sanitize(node.name);
@@ -349,7 +367,9 @@ export function validateDesign(state: DesignerState): string[] {
           );
         }
       }
-      const signature = `${method.name.trim()}/${method.params.length}`;
+      const signature = `${method.name.trim()}/${method.params
+        .map((param) => param.ty.trim())
+        .join(",")}`;
       if (signatures.has(signature)) {
         problems.push(
           `«${name}» repite el método «${method.name.trim()}» con el mismo número de parámetros.`,
@@ -437,7 +457,35 @@ export function validateDesign(state: DesignerState): string[] {
 function isDesignerState(value: unknown): value is DesignerState {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { nodes?: unknown; edges?: unknown };
-  return Array.isArray(candidate.nodes) && Array.isArray(candidate.edges);
+  if (!Array.isArray(candidate.nodes) || !Array.isArray(candidate.edges)) return false;
+  return candidate.nodes.every(isDesignerNode) && candidate.edges.every(isDesignerEdge);
+}
+
+function isDesignerNode(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const node = value as Record<string, unknown>;
+  return (
+    typeof node.id === "string" &&
+    typeof node.name === "string" &&
+    (node.kind === "class" || node.kind === "interface") &&
+    typeof node.isAbstract === "boolean" &&
+    typeof node.x === "number" &&
+    typeof node.y === "number" &&
+    Array.isArray(node.fields) &&
+    Array.isArray(node.methods)
+  );
+}
+
+function isDesignerEdge(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const edge = value as Record<string, unknown>;
+  return (
+    typeof edge.id === "string" &&
+    typeof edge.from === "string" &&
+    typeof edge.to === "string" &&
+    typeof edge.kind === "string" &&
+    typeof edge.label === "string"
+  );
 }
 
 export function loadDesign(): DesignerState | null {

@@ -77,8 +77,17 @@ export const tauriBackend: Backend = {
     return invoke<WriteOutcome>("write_generated_files", { files, overwrite });
   },
 
-  async watchCloseRequests(_isDirty: () => boolean, onRequest: () => void): Promise<() => void> {
-    return await listen("app://close-requested", () => onRequest());
+  async watchCloseRequests(isDirty: () => boolean, onRequest: () => void): Promise<() => void> {
+    return await listen("app://close-requested", () => {
+      if (isDirty()) {
+        onRequest();
+      } else {
+        void (async () => {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          await getCurrentWindow().destroy();
+        })();
+      }
+    });
   },
 
   async closeWindow(): Promise<void> {

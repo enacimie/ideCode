@@ -213,12 +213,22 @@ impl LanguageAdapter for JavaAdapter {
     }
 }
 
+const JAVA_KEYWORDS: &[&str] = &[
+    "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class",
+    "const", "continue", "default", "do", "double", "else", "enum", "extends", "final",
+    "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int",
+    "interface", "long", "native", "new", "package", "private", "protected", "public",
+    "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this",
+    "throw", "throws", "transient", "try", "void", "volatile", "while",
+];
+
 fn is_java_identifier(value: &str) -> bool {
     let mut characters = value.chars();
     let starts_ok = matches!(characters.next(), Some(first) if first == '_' || first == '$' || first.is_alphabetic());
     starts_ok
         && characters
             .all(|character| character == '_' || character == '$' || character.is_alphanumeric())
+        && !JAVA_KEYWORDS.contains(&value)
 }
 
 fn tool(name: &str) -> PathBuf {
@@ -1377,5 +1387,14 @@ record Punto(int x, int y) {}
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_java_keywords_as_file_names() {
+        let adapter = JavaAdapter::new();
+        assert!(adapter.validate_new_file("Perro.java").is_ok());
+        assert!(adapter.validate_new_file("class.java").is_err());
+        assert!(adapter.validate_new_file("int.java").is_err());
+        assert!(adapter.validate_new_file("void.java").is_err());
     }
 }

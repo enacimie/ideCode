@@ -88,30 +88,50 @@ where
     let mut timed_out = false;
     let deadline = timeout.map(|duration| Instant::now() + duration);
     let mut finished = 0usize;
+    let kill_deadline = deadline.map(|d| d + Duration::from_secs(5));
 
     while finished < 2 {
-        let wait = match deadline {
-            Some(deadline) => deadline.saturating_duration_since(Instant::now()),
-            None => Duration::from_secs(3600),
-        };
-        let wait = if wait.is_zero() {
-            Duration::from_millis(1)
-        } else {
-            wait
+        let Some(limit) = deadline else {
+            // Sin timeout: espera bloqueante real, sin ciclos de espera.
+            match receiver.recv() {
+                Ok(Message::Line(stream, line)) => on_line(stream, line),
+                Ok(Message::Done) => finished += 1,
+                Err(_) => break,
+            }
+            continue;
         };
 
-        match receiver.recv_timeout(wait) {
-            Ok(Message::Line(stream, line)) => on_line(stream, line),
-            Ok(Message::Done) => finished += 1,
-            Err(RecvTimeoutError::Timeout) => {
-                if timed_out {
-                    thread::sleep(Duration::from_millis(5));
-                } else {
+        if !limit.saturating_duration_since(Instant::now()).is_zero() {
+            match receiver.recv_timeout(limit.saturating_duration_since(Instant::now())) {
+                Ok(Message::Line(stream, line)) => on_line(stream, line),
+                Ok(Message::Done) => finished += 1,
+                Err(RecvTimeoutError::Timeout) => {
                     timed_out = true;
                     kill_tree(&mut child);
                 }
+                Err(RecvTimeoutError::Disconnected) => break,
             }
-            Err(RecvTimeoutError::Disconnected) => break,
+            continue;
+        }
+
+        if !timed_out {
+            timed_out = true;
+            kill_tree(&mut child);
+            continue;
+        }
+
+        // Tras matar el proceso, espera como máximo 5 s a que los
+        // hilos de lectura terminen; después sale aunque se atasquen.
+        let grace = kill_deadline
+            .map(|end| end.saturating_duration_since(Instant::now()))
+            .unwrap_or(Duration::from_millis(100));
+        if grace.is_zero() {
+            break;
+        }
+        match receiver.recv_timeout(grace) {
+            Ok(Message::Line(stream, line)) => on_line(stream, line),
+            Ok(Message::Done) => finished += 1,
+            Err(_) => break,
         }
     }
 

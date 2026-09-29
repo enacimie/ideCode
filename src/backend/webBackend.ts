@@ -69,7 +69,7 @@ function projectFor(example: string): ProjectSnapshot | null {
   return {
     root: `(demostración web · ${demo.name})`,
     language: languageOf(demo.id),
-    files: demo.files,
+    files: demo.files.map((file) => ({ ...file })),
   };
 }
 
@@ -135,21 +135,30 @@ export const webBackend: Backend = {
 
   async writeSource(path: string, content: string): Promise<void> {
     const file = current.files.find((candidate) => candidate.path === path);
-    if (file) {
-      file.content = content;
+    if (!file) {
+      throw new Error(`No existe el archivo «${path}».`);
     }
+    file.content = content;
   },
 
   async createSource(name: string): Promise<SourceEntry> {
     const lower = name.toLowerCase();
+    if (current.files.some((file) => file.path === name)) {
+      throw new Error(`Ya existe «${name}».`);
+    }
+    if (name.includes("/") || name.includes("\\") || name.includes("..")) {
+      throw new Error("El nombre no puede contener rutas.");
+    }
     const stem = name.replace(/\.(java|py|kt)$/i, "");
     let content: string;
     if (lower.endsWith(".py")) {
       content = `def ${stem}():\n    pass\n`;
     } else if (lower.endsWith(".kt")) {
       content = `class ${stem} {\n}\n`;
-    } else {
+    } else if (lower.endsWith(".java")) {
       content = `public class ${stem} {\n}\n`;
+    } else {
+      throw new Error("Extensión no reconocida. Usa .java, .py o .kt.");
     }
     const entry: SourceEntry = { path: name, relative: name, name, content };
     current.files.push(entry);

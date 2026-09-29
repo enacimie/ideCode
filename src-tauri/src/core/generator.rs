@@ -193,11 +193,18 @@ impl<'a> Context<'a> {
                 if method.is_static || !(from_interface || method.is_abstract) {
                     continue;
                 }
+                let signature = |candidate: &MethodModel| {
+                    let types = candidate
+                        .parameters
+                        .iter()
+                        .map(|parameter| parameter.ty.trim())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!("{}/{types}", candidate.name)
+                };
+                let wanted = signature(method);
                 let matches = |candidates: &[MethodModel]| {
-                    candidates.iter().any(|candidate| {
-                        candidate.name == method.name
-                            && candidate.parameters.len() == method.parameters.len()
-                    })
+                    candidates.iter().any(|candidate| signature(candidate) == wanted)
                 };
                 if matches(&class.methods) || matches(&required) {
                     continue;
@@ -1284,6 +1291,27 @@ mod tests {
             .unwrap_err()
             .contains("necesita un tipo"));
         assert!(generate(&[sin_tipo], "python").is_ok());
+    }
+
+    #[test]
+    fn java_generates_only_the_missing_overload() {
+        let mut pintable = base_class("Pintable", ClassKind::Interface, false);
+        pintable
+            .methods
+            .push(method("pintar", "void", vec![("texto", "String")]));
+        pintable
+            .methods
+            .push(method("pintar", "void", vec![("veces", "int")]));
+        let mut cuadro = base_class("Cuadro", ClassKind::Class, false);
+        cuadro.implements.push("Pintable".to_string());
+        cuadro
+            .methods
+            .push(method("pintar", "void", vec![("texto", "String")]));
+
+        let files = generate(&[pintable, cuadro], "java").expect("generación java");
+        let cuadro = content_of(&files, "Cuadro.java");
+        assert_eq!(cuadro.matches("pintar(String texto)").count(), 1);
+        assert!(cuadro.contains("pintar(int veces)"));
     }
 
     fn write_all(root: &std::path::Path, files: &[GeneratedFile]) {

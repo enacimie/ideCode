@@ -240,11 +240,19 @@ impl LanguageAdapter for KotlinAdapter {
     }
 }
 
+const KOTLIN_KEYWORDS: &[&str] = &[
+    "as", "break", "class", "continue", "do", "else", "false", "for", "fun", "if", "in",
+    "interface", "is", "null", "object", "package", "return", "super", "this", "throw",
+    "true", "try", "typealias", "typeof", "val", "var", "when", "while",
+];
+
 fn is_kotlin_identifier(value: &str) -> bool {
     let mut characters = value.chars();
     let starts_ok =
         matches!(characters.next(), Some(first) if first == '_' || first.is_alphabetic());
-    starts_ok && characters.all(|character| character == '_' || character.is_alphanumeric())
+    starts_ok
+        && characters.all(|character| character == '_' || character.is_alphanumeric())
+        && !KOTLIN_KEYWORDS.contains(&value)
 }
 
 fn kotlin_home_dirs() -> Vec<PathBuf> {
@@ -1608,6 +1616,9 @@ class Perro : Mascota(), Cerrable {
         assert!(adapter.validate_new_file("_guion.kt").is_ok());
         assert!(adapter.validate_new_file("2mal.kt").is_err());
         assert!(adapter.validate_new_file("mi clase.kt").is_err());
+        assert!(adapter.validate_new_file("fun.kt").is_err());
+        assert!(adapter.validate_new_file("class.kt").is_err());
+        assert!(adapter.validate_new_file("val.kt").is_err());
     }
 
     #[test]

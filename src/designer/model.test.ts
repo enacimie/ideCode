@@ -200,4 +200,79 @@ describe("parseParams y formatParams", () => {
     expect(parseParams("  ")).toEqual([]);
     expect(formatParams(params.slice(0, 2))).toBe("texto: String, edad: int");
   });
+
+  it("no rompe los tipos genéricos con comas", () => {
+    const params = parseParams("mapa: Map<String, Integer>, lista: List<String>");
+    expect(params).toHaveLength(2);
+    expect(params[0]).toMatchObject({ name: "mapa", ty: "Map<String, Integer>" });
+    expect(params[1]).toMatchObject({ name: "lista", ty: "List<String>" });
+  });
+});
+
+describe("validateDesign con sobrecarga", () => {
+  it("permite métodos con el mismo nombre y tipos distintos", () => {
+    const state = emptyDesign();
+    const clase = createNode(state, "class");
+    clase.name = "Perro";
+    const comerTexto = createMethod();
+    comerTexto.name = "comer";
+    comerTexto.returnTy = "void";
+    comerTexto.params = parseParams("texto: String");
+    const comerNumero = createMethod();
+    comerNumero.name = "comer";
+    comerNumero.returnTy = "void";
+    comerNumero.params = parseParams("veces: int");
+    clase.methods.push(comerTexto, comerNumero);
+    state.nodes.push(clase);
+    expect(validateDesign(state)).toEqual([]);
+  });
+
+  it("detecta métodos duplicados con la misma firma", () => {
+    const state = emptyDesign();
+    const clase = createNode(state, "class");
+    clase.name = "Perro";
+    const primero = createMethod();
+    primero.name = "comer";
+    primero.returnTy = "void";
+    primero.params = parseParams("texto: String");
+    const segundo = createMethod();
+    segundo.name = "comer";
+    segundo.returnTy = "void";
+    segundo.params = parseParams("otro: String");
+    clase.methods.push(primero, segundo);
+    state.nodes.push(clase);
+    expect(validateDesign(state).join("\n")).toContain("repite el método");
+  });
+});
+
+describe("buildMermaid con colisiones de nombre", () => {
+  it("desambigua clases que se sanitizan igual", () => {
+    const state = emptyDesign();
+    const primera = createNode(state, "class");
+    primera.name = "Clase A";
+    const segunda = createNode(state, "class");
+    segunda.name = "Clase_A";
+    state.nodes.push(primera, segunda);
+    const mermaid = buildMermaid(state);
+    expect(mermaid).toContain("class Clase_A {");
+    expect(mermaid).toContain("class Clase_A_1 {");
+  });
+});
+
+describe("loadDesign con datos corruptos", () => {
+  it("descarta estados con nodos mal formados", async () => {
+    const { loadDesign, saveDesign } = await import("./model");
+    localStorage.setItem(
+      "idecode.designer.v1",
+      JSON.stringify({ nodes: [{ id: "x" }], edges: [] }),
+    );
+    expect(loadDesign()).toBeNull();
+    localStorage.setItem(
+      "idecode.designer.v1",
+      JSON.stringify({ nodes: [], edges: [{ id: "y" }] }),
+    );
+    expect(loadDesign()).toBeNull();
+    saveDesign(emptyDesign());
+    expect(loadDesign()).toEqual({ nodes: [], edges: [] });
+  });
 });

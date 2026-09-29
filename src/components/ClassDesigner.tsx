@@ -148,6 +148,8 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
   viewRef.current = view;
   const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
   const fitted = useRef(false);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
 
   const problems = useMemo(() => validateDesign(design), [design]);
   const selectedNode =
@@ -237,14 +239,29 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
         setConnectFrom(null);
         return;
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && selection) {
+      const current = selectionRef.current;
+      if ((event.key === "Delete" || event.key === "Backspace") && current) {
         event.preventDefault();
-        deleteSelection();
+        setDesign((designState) => {
+          if (current.type === "node") {
+            return {
+              nodes: designState.nodes.filter((node) => node.id !== current.id),
+              edges: designState.edges.filter(
+                (edge) => edge.from !== current.id && edge.to !== current.id,
+              ),
+            };
+          }
+          return {
+            ...designState,
+            edges: designState.edges.filter((edge) => edge.id !== current.id),
+          };
+        });
+        setSelection(null);
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  });
+  }, []);
 
   function toWorld(clientX: number, clientY: number) {
     const rect = svgRef.current?.getBoundingClientRect();

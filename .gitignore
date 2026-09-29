@@ -9,6 +9,10 @@ dist
 dist-ssr
 coverage
 *.local
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
 
 # Rust
 src-tauri/target

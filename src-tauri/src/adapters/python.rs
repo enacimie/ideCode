@@ -207,11 +207,20 @@ impl LanguageAdapter for PythonAdapter {
     }
 }
 
+const PYTHON_KEYWORDS: &[&str] = &[
+    "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+    "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
+    "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return",
+    "try", "while", "with", "yield",
+];
+
 fn is_python_identifier(value: &str) -> bool {
     let mut characters = value.chars();
     let starts_ok =
         matches!(characters.next(), Some(first) if first == '_' || first.is_alphabetic());
-    starts_ok && characters.all(|character| character == '_' || character.is_alphanumeric())
+    starts_ok
+        && characters.all(|character| character == '_' || character.is_alphanumeric())
+        && !PYTHON_KEYWORDS.contains(&value)
 }
 
 fn python_program() -> PathBuf {
@@ -1364,6 +1373,9 @@ class Perro(Animal):
         assert!(adapter.validate_new_file("2modulo.py").is_err());
         assert!(adapter.validate_new_file("__init__.py").is_err());
         assert!(adapter.validate_new_file("mi modulo.py").is_err());
+        assert!(adapter.validate_new_file("class.py").is_err());
+        assert!(adapter.validate_new_file("def.py").is_err());
+        assert!(adapter.validate_new_file("import.py").is_err());
     }
 
     #[test]
