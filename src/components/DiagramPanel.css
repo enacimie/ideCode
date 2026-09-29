@@ -43,15 +43,13 @@
 
 .diagram-host {
   flex: 1;
-  overflow: auto;
-  padding: 12px;
-  display: flex;
-  justify-content: center;
+  min-height: 0;
+  background: var(--panel);
 }
 
 .diagram-host svg {
-  max-width: 100%;
-  height: auto;
+  max-width: none;
+  display: block;
 }
 
 .diagram-host g.node.clickable {

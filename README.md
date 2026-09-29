@@ -38,6 +38,10 @@ y la generación de diagramas ocurren en **Rust**; la interfaz es una capa fina 
   `@Override`/`override` necesarios, `__init__` a partir de los campos,
   `ABC`/`@abstractmethod` en las interfaces y, en Python, un `main` estático
   se convierte en `main()` de módulo con su guarda `if __name__`.
+- **Desplazamiento y zoom en el visor del diagrama y en el lienzo del
+  diseñador**: rueda del ratón para acercar alrededor del cursor, arrastre
+  para desplazar, controles `+` / `−` / `Ajustar` / 100 % y ajuste automático
+  del diagrama al panel.
 - Ejecución en streaming (salida y errores en vivo) con límite de tiempo y
   limpieza del grupo de procesos completo al vencer.
 - Ejemplos integrados que se descubren solos: cualquier carpeta bajo

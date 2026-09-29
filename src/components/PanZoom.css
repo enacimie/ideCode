@@ -1,0 +1,51 @@
+.panzoom-host {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.panzoom-host:active {
+  cursor: grabbing;
+}
+
+.panzoom-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.panzoom-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.15);
+}
+
+.panzoom-controls button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.panzoom-controls button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

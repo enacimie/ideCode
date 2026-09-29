@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ClassModel } from "../types";
+import { PanZoom } from "./PanZoom";
+import { naturalizeSvg } from "./svgNatural";
 import { classNameFromNodeId, collectMemberTargets } from "./diagramNodes";
 import "./DiagramPanel.css";
 
@@ -32,6 +34,7 @@ export function DiagramPanel({ chart, classes, stale, onSelect, onRefresh, onClo
         const { svg } = await mermaid.render(id, chart);
         if (cancelled || !host.current) return;
         host.current.innerHTML = svg;
+        naturalizeSvg(host.current);
 
         for (const node of Array.from(host.current.querySelectorAll<SVGGElement>("g.node"))) {
           const name = classNameFromNodeId(node.getAttribute("id") ?? "");
@@ -86,7 +89,9 @@ export function DiagramPanel({ chart, classes, stale, onSelect, onRefresh, onClo
       {error ? (
         <p className="diagram-error">{error}</p>
       ) : (
-        <div className="diagram-host" ref={host} />
+        <PanZoom className="diagram-host" fitKey={chart}>
+          <div className="diagram-content" ref={host} />
+        </PanZoom>
       )}
     </aside>
   );

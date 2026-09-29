@@ -29,6 +29,8 @@ import {
   type RelationKind,
 } from "../designer/model";
 import type { GeneratedFile, ProjectSnapshot, SourceEntry, Visibility } from "../types";
+import { PanZoom } from "./PanZoom";
+import { naturalizeSvg } from "./svgNatural";
 import "./ClassDesigner.css";
 
 const NODE_WIDTH = 220;
@@ -36,6 +38,8 @@ const HEADER_HEIGHT = 26;
 const LINE_HEIGHT = 18;
 const CANVAS_WIDTH = 2200;
 const CANVAS_HEIGHT = 1500;
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 3;
 const RELATIONS: RelationKind[] = [
   "extends",
   "implements",
@@ -90,6 +94,14 @@ type Props = {
 
 type Selection = { type: "node" | "edge"; id: string } | null;
 
+type View = { k: number; tx: number; ty: number };
+
+function zoomViewAt(view: View, mx: number, my: number, factor: number): View {
+  const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.k * factor));
+  const ratio = k / view.k;
+  return { k, tx: mx - (mx - view.tx) * ratio, ty: my - (my - view.ty) * ratio };
+}
+
 export function ClassDesigner({ project, onWritten, onClose }: Props) {
   const [design, setDesign] = useState<DesignerState>(() => loadDesign() ?? emptyDesign());
   const [selection, setSelection] = useState<Selection>(null);
@@ -109,6 +121,11 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  const [view, setView] = useState<View>({ k: 1, tx: 0, ty: 0 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const fitted = useRef(false);
 
   const problems = useMemo(() => validateDesign(design), [design]);
   const selectedNode =
@@ -139,6 +156,7 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
         const { svg } = await mermaid.render(id, buildMermaid(design));
         if (cancelled || !previewRef.current) return;
         previewRef.current.innerHTML = svg;
+        naturalizeSvg(previewRef.current);
       } catch (reason) {
         if (!cancelled) {
           setMermaidError(messageOf(reason));
@@ -206,13 +224,77 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  function toCanvasPoint(event: ReactPointerEvent) {
+  function toWorld(clientX: number, clientY: number) {
     const rect = svgRef.current?.getBoundingClientRect();
+    const { tx, ty, k } = viewRef.current;
     if (!rect) {
       return { x: 0, y: 0 };
     }
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    return { x: (clientX - rect.left - tx) / k, y: (clientY - rect.top - ty) / k };
   }
+
+  function zoomCanvasAt(mx: number, my: number, factor: number) {
+    setView((current) => zoomViewAt(current, mx, my, factor));
+  }
+
+  function zoomCanvasCenter(factor: number) {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    zoomCanvasAt(rect.width / 2, rect.height / 2, factor);
+  }
+
+  function fitView() {
+    if (design.nodes.length === 0) {
+      setView({ k: 1, tx: 0, ty: 0 });
+      return;
+    }
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const node of design.nodes) {
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + NODE_WIDTH);
+      maxY = Math.max(maxY, node.y + nodeHeight(node));
+    }
+    const k = Math.min(
+      MAX_ZOOM,
+      Math.max(
+        MIN_ZOOM,
+        Math.min((rect.width - 80) / (maxX - minX), (rect.height - 80) / (maxY - minY)),
+      ),
+    );
+    setView({
+      k,
+      tx: (rect.width - (maxX - minX) * k) / 2 - minX * k,
+      ty: (rect.height - (maxY - minY) * k) / 2 - minY * k,
+    });
+  }
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      const rect = svg!.getBoundingClientRect();
+      zoomCanvasAt(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+        Math.exp(-event.deltaY * 0.0015),
+      );
+    }
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  useEffect(() => {
+    if (fitted.current) return;
+    fitted.current = true;
+    fitView();
+  });
 
   function handleConnectClick(nodeId: string) {
     if (!connectFrom) {
@@ -246,21 +328,31 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
       handleConnectClick(node.id);
       return;
     }
-    const point = toCanvasPoint(event);
+    const point = toWorld(event.clientX, event.clientY);
     dragRef.current = { id: node.id, offsetX: point.x - node.x, offsetY: point.y - node.y };
     setSelection({ type: "node", id: node.id });
   }
 
   function handlePointerMove(event: ReactPointerEvent) {
     const drag = dragRef.current;
-    if (!drag) return;
-    const point = toCanvasPoint(event);
-    const x = Math.max(0, Math.min(CANVAS_WIDTH - NODE_WIDTH, point.x - drag.offsetX));
-    const y = Math.max(0, Math.min(CANVAS_HEIGHT - 80, point.y - drag.offsetY));
-    setDesign((current) => ({
-      ...current,
-      nodes: current.nodes.map((node) => (node.id === drag.id ? { ...node, x, y } : node)),
-    }));
+    if (drag) {
+      const point = toWorld(event.clientX, event.clientY);
+      const x = Math.max(0, Math.min(CANVAS_WIDTH - NODE_WIDTH, point.x - drag.offsetX));
+      const y = Math.max(0, Math.min(CANVAS_HEIGHT - 80, point.y - drag.offsetY));
+      setDesign((current) => ({
+        ...current,
+        nodes: current.nodes.map((node) => (node.id === drag.id ? { ...node, x, y } : node)),
+      }));
+      return;
+    }
+    const start = panRef.current;
+    if (start) {
+      setView((current) => ({
+        ...current,
+        tx: start.tx + (event.clientX - start.x),
+        ty: start.ty + (event.clientY - start.y),
+      }));
+    }
   }
 
   function addNode(kind: "class" | "interface") {
@@ -560,7 +652,8 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
           Eliminar
         </button>
         <span className="designer-hint">
-          Arrastra las clases · Supr borra la selección · Esc sale de «Conectar»
+          Rueda = zoom · Arrastra el fondo para desplazar · Arrastra las clases · Supr borra la
+          selección · Esc sale de «Conectar»
         </span>
       </div>
 
@@ -568,18 +661,35 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
         <div className="designer-canvas">
           <svg
             ref={svgRef}
-            width={CANVAS_WIDTH}
-            height={CANVAS_HEIGHT}
-            onPointerDown={() => {
+            onPointerDown={(event) => {
               setSelection(null);
               setConnectFrom(null);
+              panRef.current = {
+                x: event.clientX,
+                y: event.clientY,
+                tx: viewRef.current.tx,
+                ty: viewRef.current.ty,
+              };
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId);
+              } catch {
+                // Entornos sin captura de puntero (jsdom).
+              }
             }}
             onPointerMove={handlePointerMove}
             onPointerUp={() => {
               dragRef.current = null;
+              panRef.current = null;
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null;
+              panRef.current = null;
             }}
           >
             <defs>
+              <pattern id="designer-grid" width="22" height="22" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="1" fill="#d8dce3" />
+              </pattern>
               <marker
                 id="designer-arrow"
                 markerWidth="10"
@@ -621,9 +731,48 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
                 <path d="M1,6 L8,1 L15,6 L8,11 z" fill="#475569" />
               </marker>
             </defs>
-            {design.edges.map(renderEdge)}
-            {design.nodes.map(renderNode)}
+            <g
+              className="designer-world"
+              transform={`translate(${view.tx}, ${view.ty}) scale(${view.k})`}
+            >
+              <rect
+                x={-CANVAS_WIDTH}
+                y={-CANVAS_HEIGHT}
+                width={CANVAS_WIDTH * 3}
+                height={CANVAS_HEIGHT * 3}
+                fill="url(#designer-grid)"
+              />
+              {design.edges.map(renderEdge)}
+              {design.nodes.map(renderNode)}
+            </g>
           </svg>
+          <div className="designer-zoom">
+            <button
+              type="button"
+              title="Acercar"
+              aria-label="Acercar lienzo"
+              onClick={() => zoomCanvasCenter(1.25)}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              title="Alejar"
+              aria-label="Alejar lienzo"
+              onClick={() => zoomCanvasCenter(0.8)}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              title="Ajustar al lienzo"
+              aria-label="Ajustar lienzo"
+              onClick={fitView}
+            >
+              Ajustar
+            </button>
+            <span className="designer-zoom-level">{Math.round(view.k * 100)} %</span>
+          </div>
         </div>
 
         <aside className="designer-inspector">
@@ -920,7 +1069,9 @@ export function ClassDesigner({ project, onWritten, onClose }: Props) {
           mermaidError ? (
             <p className="designer-error">{mermaidError}</p>
           ) : (
-            <div className="preview-host" ref={previewRef} />
+            <PanZoom className="preview-host" fitKey={tab}>
+              <div className="preview-content" ref={previewRef} />
+            </PanZoom>
           )
         ) : problems.length > 0 ? (
           <ul className="designer-problems">
