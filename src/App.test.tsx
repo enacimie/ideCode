@@ -45,6 +45,14 @@ describe("App", () => {
     );
   });
 
+  it("muestra el aviso de escritorio al ejecutar en el navegador", async () => {
+    await loadDemo();
+    fireEvent.click(screen.getByRole("button", { name: "Ejecutar" }));
+    await waitFor(() =>
+      expect(screen.getByText(/solo está disponible en la aplicación de escritorio/i)).toBeTruthy(),
+    );
+  });
+
   it("agrupa las acciones de archivo en el menú", async () => {
     await loadDemo();
     fireEvent.click(screen.getByRole("button", { name: /Archivo/ }));

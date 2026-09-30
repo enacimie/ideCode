@@ -877,11 +877,18 @@ fn package_name(root: Node, source: &[u8]) -> Option<String> {
 }
 
 fn parse_javac(output: &str, root: &Path) -> Vec<Diagnostic> {
-    static PATTERN: OnceLock<Regex> = OnceLock::new();
-    let pattern = PATTERN.get_or_init(|| {
-        Regex::new(r"^(?P<file>.+?):(?P<line>\d+):\s+(?P<sev>error|warning|note):\s+(?P<msg>.*)$")
-            .expect("a valid javac diagnostic pattern")
-    });
+    static PATTERN: OnceLock<Option<Regex>> = OnceLock::new();
+    let pattern = PATTERN
+        .get_or_init(|| {
+            Regex::new(
+                r"^(?P<file>.+?):(?P<line>\d+):\s+(?P<sev>error|warning|note):\s+(?P<msg>.*)$",
+            )
+            .ok()
+        })
+        .as_ref();
+    let Some(pattern) = pattern else {
+        return Vec::new();
+    };
 
     output
         .lines()

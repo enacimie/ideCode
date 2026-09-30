@@ -396,13 +396,8 @@ fn detect_entry(project: &Project) -> Result<String, AdapterError> {
                 .any(|function| function.name == "main")
         })
         .collect();
-    if candidates.is_empty() {
-        return Err(AdapterError::Invalid(
-            "No se encontró «fun main()» en el nivel superior de ningún archivo. Añádela a un archivo .kt e inténtalo de nuevo.".into(),
-        ));
-    }
     candidates.sort_by(|a, b| a.file.cmp(&b.file));
-    let chosen = candidates
+    let Some(chosen) = candidates
         .iter()
         .find(|model| {
             Path::new(&model.file)
@@ -412,7 +407,11 @@ fn detect_entry(project: &Project) -> Result<String, AdapterError> {
         })
         .copied()
         .or_else(|| candidates.first().copied())
-        .expect("candidatos no vacíos");
+    else {
+        return Err(AdapterError::Invalid(
+            "No se encontró «fun main()» en el nivel superior de ningún archivo. Añádela a un archivo .kt e inténtalo de nuevo.".into(),
+        ));
+    };
 
     let stem = Path::new(&chosen.file)
         .file_stem()
@@ -1084,28 +1083,32 @@ fn visibility(modifiers: &[String]) -> Visibility {
 }
 
 fn parse_kotlinc(output: &str, root: &Path) -> Vec<Diagnostic> {
-    static CLASSIC: OnceLock<Regex> = OnceLock::new();
-    static MODERN: OnceLock<Regex> = OnceLock::new();
-    static LEGACY: OnceLock<Regex> = OnceLock::new();
+    static CLASSIC: OnceLock<Option<Regex>> = OnceLock::new();
+    static MODERN: OnceLock<Option<Regex>> = OnceLock::new();
+    static LEGACY: OnceLock<Option<Regex>> = OnceLock::new();
 
-    let classic = CLASSIC.get_or_init(|| {
-        Regex::new(r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<col>\d+))?:\s*(?P<sev>error|warning):\s*(?P<msg>.*)$")
-            .expect("patrón clásico de kotlinc")
-    });
-    let modern = MODERN.get_or_init(|| {
-        Regex::new(r"^(?P<sev>[ew]):\s*(?:file://)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):?\s*(?P<msg>.*)$")
-            .expect("patrón moderno de kotlinc")
-    });
-    let legacy = LEGACY.get_or_init(|| {
-        Regex::new(r"^(?P<sev>[ew]):\s*(?:file://)?(?P<file>.+?):\s*\((?P<line>\d+),\s*(?P<col>\d+)\):\s*(?P<msg>.*)$")
-            .expect("patrón intermedio de kotlinc")
-    });
+    let classic = CLASSIC
+        .get_or_init(|| {
+            Regex::new(r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<col>\d+))?:\s*(?P<sev>error|warning):\s*(?P<msg>.*)$").ok()
+        })
+        .as_ref();
+    let modern = MODERN
+        .get_or_init(|| {
+            Regex::new(r"^(?P<sev>[ew]):\s*(?:file://)?(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):?\s*(?P<msg>.*)$").ok()
+        })
+        .as_ref();
+    let legacy = LEGACY
+        .get_or_init(|| {
+            Regex::new(r"^(?P<sev>[ew]):\s*(?:file://)?(?P<file>.+?):\s*\((?P<line>\d+),\s*(?P<col>\d+)\):\s*(?P<msg>.*)$").ok()
+        })
+        .as_ref();
+    let patterns: Vec<&Regex> = [classic, legacy, modern].into_iter().flatten().collect();
 
     output
         .lines()
         .filter_map(|line| {
             let trimmed = line.trim();
-            for pattern in [classic, legacy, modern] {
+            for pattern in &patterns {
                 let Some(captures) = pattern.captures(trimmed) else {
                     continue;
                 };

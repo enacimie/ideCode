@@ -76,8 +76,12 @@ where
         }
     })?;
 
-    let stdout = child.stdout.take().expect("stdout was piped");
-    let stderr = child.stderr.take().expect("stderr was piped");
+    let stdout = child.stdout.take().ok_or_else(|| {
+        AdapterError::Io("No se pudo capturar la salida estándar del proceso hijo.".into())
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        AdapterError::Io("No se pudo capturar la salida de error del proceso hijo.".into())
+    })?;
     let (sender, receiver) = mpsc::channel::<Message>();
     let stderr_sender = sender.clone();
     let stdout_reader =
