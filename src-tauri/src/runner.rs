@@ -30,6 +30,10 @@ enum Message {
 
 pub const APPIMAGE_ENV_POLLUTION: &[&str] = &["PYTHONHOME", "PYTHONPATH", "LD_LIBRARY_PATH"];
 
+/// Líneas en vuelo antes de aplicar contrapresión a la salida del proceso.
+/// Si se supera, los hilos de lectura se bloquean y dejan de consumir el pipe.
+const RUN_OUTPUT_BUFFER: usize = 1024;
+
 pub fn sanitize_child_env(command: &mut Command) {
     if std::env::var_os("APPDIR").is_some() {
         strip_appimage_env(command);
@@ -82,7 +86,7 @@ where
     let stderr = child.stderr.take().ok_or_else(|| {
         AdapterError::Io("No se pudo capturar la salida de error del proceso hijo.".into())
     })?;
-    let (sender, receiver) = mpsc::channel::<Message>();
+    let (sender, receiver) = mpsc::sync_channel::<Message>(RUN_OUTPUT_BUFFER);
     let stderr_sender = sender.clone();
     let stdout_reader =
         thread::spawn(move || read_lines(BufReader::new(stdout), Stream::Stdout, sender));
@@ -139,8 +143,13 @@ where
         }
     }
 
-    let _ = stdout_reader.join();
-    let _ = stderr_reader.join();
+    // Si algún hilo de lectura sigue bloqueado esperando EOF (por ejemplo un
+    // nieto que escapó del kill), no lo esperamos: desligarlo evita que el
+    // comando se cuelgue indefinidamente. Solo unimos cuando ambos terminaron.
+    if finished >= 2 {
+        let _ = stdout_reader.join();
+        let _ = stderr_reader.join();
+    }
     let status = child
         .wait()
         .map_err(|error| AdapterError::Io(error.to_string()))?;
@@ -161,13 +170,42 @@ fn kill_tree(child: &mut Child) {
             }
         }
     }
+    #[cfg(windows)]
+    {
+        // En Windows no existe el grupo de procesos de Unix y `Child::kill`
+        // solo mata al proceso directo: los nietos heredarían los pipes y
+        // bloquearían a los hilos de lectura. `taskkill /T` mata el árbol.
+        let pid = child.id();
+        if pid > 0 {
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
     let _ = child.kill();
 }
 
-fn read_lines<R: Read>(reader: BufReader<R>, stream: Stream, sender: mpsc::Sender<Message>) {
-    for line in reader.lines() {
-        match line {
-            Ok(line) => {
+fn read_lines<R: Read>(
+    mut reader: BufReader<R>,
+    stream: Stream,
+    sender: mpsc::SyncSender<Message>,
+) {
+    let mut buffer = Vec::new();
+    loop {
+        buffer.clear();
+        match reader.read_until(b'\n', &mut buffer) {
+            Ok(0) => break,
+            Ok(_) => {
+                if buffer.last() == Some(&b'\n') {
+                    buffer.pop();
+                    if buffer.last() == Some(&b'\r') {
+                        buffer.pop();
+                    }
+                }
+                let line = String::from_utf8_lossy(&buffer).into_owned();
                 if sender.send(Message::Line(stream, line)).is_err() {
                     break;
                 }
@@ -236,6 +274,22 @@ mod tests {
         assert!(lines.contains(&(Stream::Stdout, "uno".to_string())));
         assert!(lines.contains(&(Stream::Stdout, "dos".to_string())));
         assert!(lines.contains(&(Stream::Stderr, "fallo".to_string())));
+    }
+
+    #[test]
+    fn keeps_reading_after_invalid_utf8() {
+        let mut lines = Vec::new();
+        run_streaming(
+            &shell("printf '\\377\\376\\n'; printf 'despues\\n'"),
+            Some(Duration::from_secs(5)),
+            |_, line| lines.push(line),
+        )
+        .unwrap();
+
+        assert!(
+            lines.iter().any(|line| line == "despues"),
+            "la salida se cortó tras bytes no UTF-8: {lines:?}"
+        );
     }
 
     #[test]
@@ -318,6 +372,26 @@ mod windows_tests {
         assert!(
             lines.iter().any(|line| line.contains("hola")),
             "salida inesperada: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn returns_without_hanging_when_a_grandchild_keeps_the_pipe_open() {
+        let spec = RunSpec {
+            program: PathBuf::from("cmd"),
+            args: ["/C", "start /B ping -n 30 127.0.0.1 & ping -n 30 127.0.0.1"]
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+            cwd: std::env::temp_dir(),
+            env: Vec::new(),
+        };
+        let started = std::time::Instant::now();
+        let outcome = run_streaming(&spec, Some(Duration::from_millis(500)), |_, _| {}).unwrap();
+        assert!(outcome.timed_out);
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "run_streaming no debería colgarse con un nieto vivo"
         );
     }
 }

@@ -137,17 +137,23 @@ export default function App() {
     if (!project) return;
     const pending = project.files.filter((file) => dirty.has(file.path));
     if (pending.length === 0) return;
-    for (const file of pending) {
-      await backend.writeSource(file.path, file.content);
-    }
-    const saved = pending.map((file) => file.path);
-    setDirty((current) => {
-      const next = new Set(current);
-      for (const path of saved) {
-        next.delete(path);
+    const saved: string[] = [];
+    try {
+      for (const file of pending) {
+        await backend.writeSource(file.path, file.content);
+        saved.push(file.path);
       }
-      return next;
-    });
+    } finally {
+      if (saved.length > 0) {
+        setDirty((current) => {
+          const next = new Set(current);
+          for (const path of saved) {
+            next.delete(path);
+          }
+          return next;
+        });
+      }
+    }
   }
 
   async function handleOpen() {
@@ -238,7 +244,7 @@ export default function App() {
   }
 
   async function handleRun() {
-    if (!project) return;
+    if (!project || running) return;
     setNotice(null);
     setLines([]);
     setOutputTab("output");

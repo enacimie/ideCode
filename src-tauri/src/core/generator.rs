@@ -38,6 +38,9 @@ impl<'a> Context<'a> {
         let mut by_name: HashMap<&'a str, &'a ClassModel> = HashMap::new();
         for class in classes {
             validate_identifier(&class.name)?;
+            if let Some(package) = package_of(class) {
+                validate_package(package)?;
+            }
             if by_name.insert(class.name.as_str(), class).is_some() {
                 return Err(format!("Hay dos clases llamadas «{}».", class.name));
             }
@@ -250,8 +253,12 @@ impl<'a> Context<'a> {
         self.classes
             .iter()
             .map(|class| {
+                let relative = match package_of(class) {
+                    Some(package) => format!("{}/{}.java", package_directory(package), class.name),
+                    None => format!("{}.java", class.name),
+                };
                 Ok(GeneratedFile {
-                    relative: format!("{}.java", class.name),
+                    relative,
                     content: self.java_class(class),
                 })
             })
@@ -269,7 +276,13 @@ impl<'a> Context<'a> {
             ""
         };
         let generics = java_generics(&class.type_parameters);
-        let mut header = format!("public {abstract_marker}{keyword} {}{generics}", class.name);
+        let package = package_of(class)
+            .map(|package| format!("package {package};\n\n"))
+            .unwrap_or_default();
+        let mut header = format!(
+            "{package}public {abstract_marker}{keyword} {}{generics}",
+            class.name
+        );
 
         if class.kind == ClassKind::Interface {
             if !class.extends.is_empty() {
@@ -306,8 +319,12 @@ impl<'a> Context<'a> {
         self.classes
             .iter()
             .map(|class| {
+                let relative = match package_of(class) {
+                    Some(package) => format!("{}/{}.kt", package_directory(package), class.name),
+                    None => format!("{}.kt", class.name),
+                };
                 Ok(GeneratedFile {
-                    relative: format!("{}.kt", class.name),
+                    relative,
                     content: self.kotlin_class(class),
                 })
             })
@@ -344,6 +361,9 @@ impl<'a> Context<'a> {
         } else {
             format!(" : {}", supers.join(", "))
         };
+        let package = package_of(class)
+            .map(|package| format!("package {package}\n\n"))
+            .unwrap_or_default();
 
         let overrides_property = |name: &str| {
             class.kind == ClassKind::Class
@@ -431,12 +451,12 @@ impl<'a> Context<'a> {
 
         if body.is_empty() {
             return format!(
-                "{abstract_marker}{keyword} {}{generics}{supertypes}\n",
+                "{package}{abstract_marker}{keyword} {}{generics}{supertypes}\n",
                 class.name
             );
         }
         format!(
-            "{abstract_marker}{keyword} {}{generics}{supertypes} {{\n{}\n}}\n",
+            "{package}{abstract_marker}{keyword} {}{generics}{supertypes} {{\n{}\n}}\n",
             class.name,
             body.join("\n\n")
         )
@@ -578,6 +598,28 @@ fn validate_identifier(name: &str) -> Result<(), String> {
             "«{name}» no es un identificador válido: usa letras, dígitos y «_», sin empezar por dígito."
         ))
     }
+}
+
+/// Paquete declarado por la clase, si lo hay y no está vacío.
+fn package_of(class: &ClassModel) -> Option<&str> {
+    class
+        .package
+        .as_deref()
+        .map(str::trim)
+        .filter(|package| !package.is_empty())
+}
+
+/// Convierte «a.b.c» en «a/b/c» para la ruta del fichero.
+fn package_directory(package: &str) -> String {
+    package.replace('.', "/")
+}
+
+fn validate_package(package: &str) -> Result<(), String> {
+    for segment in package.split('.') {
+        validate_identifier(segment)
+            .map_err(|_| format!("«{package}» no es un paquete válido en «{segment}»."))?;
+    }
+    Ok(())
 }
 
 fn java_visibility(visibility: Visibility) -> &'static str {
@@ -1155,6 +1197,32 @@ mod tests {
         assert!(perro.contains("    override fun ladrar(): String {"));
         assert!(perro.contains("        TODO(\"Implementar\")"));
         assert!(perro.contains("    override fun mover() {"));
+    }
+
+    #[test]
+    fn java_and_kotlin_place_classes_in_their_package() {
+        let mut animal = base_class("Animal", ClassKind::Class, false);
+        animal.package = Some("com.aula.mascotas".to_string());
+
+        let java = generate(&[animal.clone()], "java").expect("java");
+        assert_eq!(java[0].relative, "com/aula/mascotas/Animal.java");
+        assert!(java[0]
+            .content
+            .starts_with("package com.aula.mascotas;\n\n"));
+        assert!(java[0].content.contains("public class Animal {"));
+
+        let kotlin = generate(&[animal], "kotlin").expect("kotlin");
+        assert_eq!(kotlin[0].relative, "com/aula/mascotas/Animal.kt");
+        assert!(kotlin[0]
+            .content
+            .starts_with("package com.aula.mascotas\n\n"));
+    }
+
+    #[test]
+    fn rejects_invalid_package_names() {
+        let mut animal = base_class("Animal", ClassKind::Class, false);
+        animal.package = Some("com.9mal".to_string());
+        assert!(generate(&[animal], "java").is_err());
     }
 
     #[test]

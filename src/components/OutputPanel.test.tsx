@@ -77,4 +77,19 @@ describe("OutputPanel", () => {
     );
     expect(container.querySelector(".stale-dot")).toBeNull();
   });
+
+  it("anuncia la salida a los lectores de pantalla", () => {
+    const { container } = render(
+      <OutputPanel
+        diagnostics={[]}
+        diagnosticsStale={false}
+        lines={lines}
+        running={false}
+        tab="output"
+        onTabChange={() => undefined}
+      />,
+    );
+    const body = container.querySelector(".output-body");
+    expect(body?.getAttribute("aria-live")).toBe("polite");
+  });
 });

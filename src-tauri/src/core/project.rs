@@ -58,8 +58,18 @@ impl Project {
             if !extensions.iter().any(|ext| has_extension(path, ext)) {
                 continue;
             }
-            let Ok(content) = fs::read_to_string(path) else {
+            let Ok(bytes) = fs::read(path) else {
                 continue;
+            };
+            // Los ficheros que no son UTF-8 válido se decodifican como Latin-1
+            // (que siempre produce texto) en vez de ocultarlos del proyecto.
+            let content = match String::from_utf8(bytes) {
+                Ok(text) => text,
+                Err(error) => error
+                    .into_bytes()
+                    .iter()
+                    .map(|byte| *byte as char)
+                    .collect(),
             };
             let relative = path
                 .strip_prefix(&root)
@@ -131,6 +141,24 @@ mod tests {
         }
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn decodes_latin1_sources_instead_of_hiding_them() {
+        let root = std::env::temp_dir().join(format!("idecode-latin1-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("A.java"),
+            b"// acentos: \xe9\xed\xf3\nclass A {}\n",
+        )
+        .unwrap();
+
+        let project = Project::load(&root, &["java"]).unwrap();
+        assert_eq!(project.sources.len(), 1);
+        assert!(project.sources[0].content.contains("acentos: éíó"));
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -24,4 +24,29 @@ describe("CloseDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
+
+  it("enfoca la opción principal y permite cancelar con Escape", () => {
+    const onCancel = vi.fn();
+    render(<CloseDialog onSave={vi.fn()} onDiscard={vi.fn()} onCancel={onCancel} />);
+
+    const save = screen.getByRole("button", { name: "Guardar y cerrar" });
+    expect(document.activeElement).toBe(save);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("atrapa el foco dentro del diálogo con el tabulador", () => {
+    render(<CloseDialog onSave={vi.fn()} onDiscard={vi.fn()} onCancel={vi.fn()} />);
+    const save = screen.getByRole("button", { name: "Guardar y cerrar" });
+    const cancel = screen.getByRole("button", { name: "Cancelar" });
+
+    cancel.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(save);
+
+    save.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(cancel);
+  });
 });

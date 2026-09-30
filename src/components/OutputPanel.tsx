@@ -55,7 +55,7 @@ export function OutputPanel({
         {running && <span className="running-badge">ejecutando…</span>}
       </div>
 
-      <div className="output-body" ref={body}>
+      <div className="output-body" ref={body} aria-live="polite">
         {tab === "output" &&
           (lines.length === 0 ? (
             <p className="muted">La salida del programa aparecerá aquí.</p>

@@ -6,7 +6,6 @@ import type {
   GeneratedFile,
   LanguageInfo,
   ProjectSnapshot,
-  RunChunk,
   RunOutcome,
   SourceEntry,
   WriteOutcome,
@@ -180,13 +179,8 @@ export const webBackend: Backend = {
     };
   },
 
-  async run(
-    _entry: string | null,
-    _args: string[],
-    onChunk: (chunk: RunChunk) => void,
-  ): Promise<RunOutcome> {
-    onChunk({ stream: "stderr", line: DESKTOP_ONLY });
-    return { exit_code: null, timed_out: false };
+  async run(): Promise<RunOutcome> {
+    throw new Error(DESKTOP_ONLY);
   },
 
   async classDiagram(): Promise<DiagramResult> {

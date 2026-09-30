@@ -28,6 +28,14 @@ describe("webBackend.watchCloseRequests", () => {
   });
 });
 
+describe("webBackend.run", () => {
+  it("avisa de que ejecutar necesita la app de escritorio", async () => {
+    await expect(webBackend.run(null, [], () => undefined)).rejects.toThrow(
+      /solo está disponible en la aplicación de escritorio/i,
+    );
+  });
+});
+
 describe("webBackend con Kotlin", () => {
   it("carga la demo de Kotlin con su lenguaje", async () => {
     const snapshot = await webBackend.loadExample("zoologico_kotlin");

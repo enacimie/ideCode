@@ -24,7 +24,29 @@ export function Menu({ label, disabled, children }: MenuProps) {
       if (event.key === "Escape") {
         setOpen(false);
         trigger.current?.focus();
+        return;
       }
+      const keys = ["ArrowDown", "ArrowUp", "Home", "End"];
+      if (!keys.includes(event.key)) return;
+
+      const items = Array.from(
+        host.current?.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)") ?? [],
+      );
+      if (items.length === 0) return;
+
+      event.preventDefault();
+      if (event.key === "Home") {
+        items[0].focus();
+        return;
+      }
+      if (event.key === "End") {
+        items[items.length - 1].focus();
+        return;
+      }
+      const current = items.indexOf(document.activeElement as HTMLButtonElement);
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      const next = (current + delta + items.length) % items.length;
+      items[next].focus();
     }
 
     document.addEventListener("mousedown", onMouseDown);

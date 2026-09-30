@@ -111,6 +111,14 @@ fn snapshot(root: &Path) -> Result<ProjectSnapshot, String> {
     })
 }
 
+/// Carga el proyecto (lectura de disco) en el pool de bloqueo para no
+/// detener el runtime async, que es lo que congela la interfaz.
+async fn snapshot_async(root: PathBuf) -> Result<ProjectSnapshot, String> {
+    tauri::async_runtime::spawn_blocking(move || snapshot(&root))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 fn resolve(root: &Path, path: &str) -> Result<PathBuf, String> {
     let root = root.canonicalize().map_err(|error| error.to_string())?;
     let candidate = PathBuf::from(path);
@@ -307,20 +315,22 @@ async fn select_project(
         .0
         .lock()
         .map_err(|_| "El estado del proyecto está bloqueado.".to_string())? = Some(root.clone());
-    Ok(Some(snapshot(&root)?))
+    Ok(Some(snapshot_async(root).await?))
 }
 
 #[tauri::command]
-fn current_project(state: State<'_, ProjectState>) -> Result<Option<ProjectSnapshot>, String> {
-    match state
+async fn current_project(
+    state: State<'_, ProjectState>,
+) -> Result<Option<ProjectSnapshot>, String> {
+    let root = state
         .0
         .lock()
         .map_err(|_| "El estado del proyecto está bloqueado.".to_string())?
-        .clone()
-    {
-        Some(root) => Ok(Some(snapshot(&root)?)),
-        None => Ok(None),
-    }
+        .clone();
+    let Some(root) = root else {
+        return Ok(None);
+    };
+    Ok(Some(snapshot_async(root).await?))
 }
 
 #[tauri::command]
@@ -339,7 +349,7 @@ async fn load_example(
         .0
         .lock()
         .map_err(|_| "El estado del proyecto está bloqueado.".to_string())? = Some(root.clone());
-    snapshot(&root)
+    snapshot_async(root).await
 }
 
 #[tauri::command]

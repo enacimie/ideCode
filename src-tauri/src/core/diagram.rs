@@ -286,7 +286,9 @@ fn field_type(ty: &str) -> String {
 }
 
 fn sanitize(name: &str) -> String {
-    name.trim().replace(['\n', '\r', '\t', ' '], "")
+    name.trim()
+        .replace(['(', ')', '[', ']', '{', '}', '"', '\''], "_")
+        .replace(['\n', '\r', '\t', ' '], "")
 }
 
 fn simple_name_of(ty: &str) -> String {
@@ -646,6 +648,13 @@ mod tests {
         assert!(!mermaid.contains("List<Juguete>"));
 
         assert!(to_mermaid(&[]).contains("class Proyecto"));
+    }
+
+    #[test]
+    fn sanitizes_names_that_break_mermaid() {
+        assert_eq!(sanitize("A(B)"), "A_B_");
+        assert_eq!(sanitize(" con espacio "), "conespacio");
+        assert_eq!(sanitize("A\"x\""), "A_x_");
     }
 
     #[test]

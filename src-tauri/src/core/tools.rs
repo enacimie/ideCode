@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn executable_extensions() -> Vec<String> {
     if cfg!(windows) {
@@ -31,13 +31,27 @@ pub fn find_first(names: &[&str], dirs: &[PathBuf], extensions: &[String]) -> Op
         for dir in dirs {
             for extension in extensions {
                 let candidate = dir.join(format!("{name}{extension}"));
-                if candidate.is_file() {
+                if is_executable(&candidate) {
                     return Some(candidate);
                 }
             }
         }
     }
     None
+}
+
+fn is_executable(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
 }
 
 pub fn find_program(names: &[&str], extra_dirs: &[PathBuf]) -> Option<PathBuf> {
@@ -59,10 +73,31 @@ mod tests {
         root
     }
 
+    fn make_executable(path: &Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = path;
+        }
+    }
+
+    fn write_program(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        fs::write(&path, "").unwrap();
+        make_executable(&path);
+        path
+    }
+
     #[test]
     fn prefers_the_first_name_that_exists() {
         let root = temp_root("orden");
-        fs::write(root.join("python"), "").unwrap();
+        write_program(&root, "python");
 
         let found = find_first(
             &["python3", "python"],
@@ -71,7 +106,7 @@ mod tests {
         );
         assert_eq!(found, Some(root.join("python")));
 
-        fs::write(root.join("python3"), "").unwrap();
+        write_program(&root, "python3");
         let found = find_first(
             &["python3", "python"],
             std::slice::from_ref(&root),
@@ -85,8 +120,8 @@ mod tests {
     #[test]
     fn resolves_windows_extensions() {
         let root = temp_root("windows");
-        fs::write(root.join("python.exe"), "").unwrap();
-        fs::write(root.join("javac.bat"), "").unwrap();
+        write_program(&root, "python.exe");
+        write_program(&root, "javac.bat");
 
         let extensions: Vec<String> = vec![".exe".to_string(), ".bat".to_string(), String::new()];
 
@@ -106,7 +141,7 @@ mod tests {
         let second = root.join("segundo");
         fs::create_dir_all(&first).unwrap();
         fs::create_dir_all(&second).unwrap();
-        fs::write(second.join("java"), "").unwrap();
+        write_program(&second, "java");
 
         assert_eq!(
             find_first(
@@ -116,7 +151,7 @@ mod tests {
             ),
             Some(second.join("java"))
         );
-        fs::write(first.join("java"), "").unwrap();
+        write_program(&first, "java");
         assert_eq!(
             find_first(
                 &["java"],
@@ -141,6 +176,28 @@ mod tests {
         assert_eq!(
             find_first(&["ruby"], std::slice::from_ref(&root), &["".to_string()]),
             None
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignores_files_without_execute_permission() {
+        let root = temp_root("permisos");
+        let path = root.join("python3");
+        fs::write(&path, "").unwrap();
+
+        assert_eq!(
+            find_first(&["python3"], std::slice::from_ref(&root), &["".to_string()]),
+            None,
+            "un fichero sin permiso de ejecución no debe usarse"
+        );
+
+        make_executable(&path);
+        assert_eq!(
+            find_first(&["python3"], std::slice::from_ref(&root), &["".to_string()]),
+            Some(path)
         );
 
         let _ = fs::remove_dir_all(&root);

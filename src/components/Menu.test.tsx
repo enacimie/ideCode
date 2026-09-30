@@ -86,4 +86,37 @@ describe("Menu", () => {
     const guardar = screen.getByRole("menuitem", { name: /Guardar/ }) as HTMLButtonElement;
     expect(guardar.disabled).toBe(true);
   });
+
+  it("navega con las flechas entre los elementos", () => {
+    render(
+      <Menu label="Archivo">
+        {() => (
+          <>
+            <MenuItem onSelect={() => undefined}>Uno</MenuItem>
+            <MenuItem onSelect={() => undefined}>Dos</MenuItem>
+          </>
+        )}
+      </Menu>,
+    );
+    open();
+
+    const uno = screen.getByRole("menuitem", { name: "Uno" });
+    const dos = screen.getByRole("menuitem", { name: "Dos" });
+    expect(document.activeElement).toBe(uno);
+
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(dos);
+
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(uno);
+
+    fireEvent.keyDown(document, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(dos);
+
+    fireEvent.keyDown(document, { key: "Home" });
+    expect(document.activeElement).toBe(uno);
+
+    fireEvent.keyDown(document, { key: "End" });
+    expect(document.activeElement).toBe(dos);
+  });
 });
